@@ -628,7 +628,7 @@ def total_clicks_reward(responses):
     return reward
 
 
-def create_environment(env_config):
+def create_environment(env_config) -> recsim_gym.RecSimGymEnv:
     """Creates an interest evolution environment."""
 
     user_model = IEvUserModel(
@@ -651,3 +651,33 @@ def create_environment(env_config):
     return recsim_gym.RecSimGymEnv(ievenv, clicked_watchtime_reward,
                                    utils.aggregate_video_cluster_metrics,
                                    utils.write_video_cluster_metrics)
+
+
+def create_multiuser_environment(env_config) -> environment.MultiUserEnvironment:
+    """Creates an interest evolution environment for multi-user."""
+
+    num_users = env_config.get('num_users', 1)
+    if num_users > 1:
+        user_models = [
+            IEvUserModel(
+                env_config['slate_size'],
+                choice_model_ctor=choice_model.MultinomialProportionalChoiceModel,
+                response_model_ctor=IEvResponse,
+                user_state_ctor=IEvUserState,
+                seed=env_config['seed'])
+            for _ in range(num_users)
+        ]
+    else:
+        raise ValueError('num_users should be specified and larger than 1.')
+
+    document_sampler = UtilityModelVideoSampler(
+        doc_ctor=IEvVideo, seed=env_config['seed'])
+
+    ievenv = environment.MultiUserEnvironment(
+        user_models,
+        document_sampler,
+        env_config['num_candidates'],
+        env_config['slate_size'],
+        resample_documents=env_config['resample_documents'])
+
+    return ievenv

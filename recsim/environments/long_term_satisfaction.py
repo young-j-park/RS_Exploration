@@ -353,7 +353,7 @@ def clicked_engagement_reward(responses):
     return reward
 
 
-def create_environment(env_config):
+def create_environment(env_config) -> recsim_gym.RecSimGymEnv:
     """Creates a long-term satisfaction environment."""
 
     user_model = LTSUserModel(
@@ -371,3 +371,30 @@ def create_environment(env_config):
         resample_documents=env_config['resample_documents'])
 
     return recsim_gym.RecSimGymEnv(ltsenv, clicked_engagement_reward)
+
+
+def create_multiuser_environment(env_config) -> environment.MultiUserEnvironment:
+    """Creates a long-term environment for multi-user."""
+
+    num_users = env_config.get('num_users', 1)
+    if num_users > 1:
+        user_models = [
+            LTSUserModel(
+                env_config['slate_size'],
+                user_state_ctor=LTSUserState,
+                response_model_ctor=LTSResponse)
+            for _ in range(num_users)
+        ]
+    else:
+        raise ValueError('num_users should be specified and larger than 1.')
+
+    document_sampler = LTSDocumentSampler()
+
+    ltsenv = environment.MultiUserEnvironment(
+        user_models,
+        document_sampler,
+        env_config['num_candidates'],
+        env_config['slate_size'],
+        resample_documents=env_config['resample_documents'])
+
+    return ltsenv

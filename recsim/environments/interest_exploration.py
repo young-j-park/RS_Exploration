@@ -370,7 +370,7 @@ def total_clicks_reward(responses):
     return reward
 
 
-def create_environment(env_config):
+def create_environment(env_config) -> recsim_gym.RecSimGymEnv:
     """Creates an interest exploration environment."""
 
     document_sampler = IETopicDocumentSampler(seed=env_config['seed'])
@@ -393,3 +393,33 @@ def create_environment(env_config):
     return recsim_gym.RecSimGymEnv(ieenv, total_clicks_reward,
                                    utils.aggregate_video_cluster_metrics,
                                    utils.write_video_cluster_metrics)
+
+
+def create_multiuser_environment(env_config) -> environment.MultiUserEnvironment:
+    """Creates an interest exploration environment for multi-user."""
+
+    document_sampler = IETopicDocumentSampler(seed=env_config['seed'])
+    IEDocument.NUM_CLUSTERS = document_sampler.num_clusters
+    IEResponse.NUM_CLUSTERS = document_sampler.num_clusters
+
+    num_users = env_config.get('num_users', 1)
+    if num_users > 1:
+        user_models = [
+            IEUserModel(
+                env_config['slate_size'],
+                user_state_ctor=IEUserState,
+                response_model_ctor=IEResponse,
+                seed=env_config['seed'])
+            for _ in range(num_users)
+        ]
+    else:
+        raise ValueError('num_users should be specified and larger than 1.')
+
+    ieenv = environment.MultiUserEnvironment(
+        user_models,
+        document_sampler,
+        env_config['num_candidates'],
+        env_config['slate_size'],
+        resample_documents=env_config['resample_documents'])
+
+    return ieenv
