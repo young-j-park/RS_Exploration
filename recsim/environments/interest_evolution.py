@@ -419,7 +419,7 @@ class UtilityModelUserSampler(user.AbstractUserSampler):
             -1.0, 1.0,
             self.get_user_ctor().NUM_FEATURES)
         # Assume all users have fixed amount of time
-        features['time_budget'] = 200.0  # 120.0
+        features['time_budget'] = 500.0  # 120.0
         features['no_click_mass'] = self._no_click_mass
         features['step_penalty'] = 0.5
         features['score_scaling'] = 0.05
@@ -572,7 +572,7 @@ class IEvUserModel(user.AbstractUserModel):
             response.quality = documents[i].quality
             response.cluster_id = documents[i].cluster_id
 
-        if selected_index is None:
+        if self.is_terminal() or selected_index is None:
             return responses
         self._generate_click_response(documents[selected_index],
                                       responses[selected_index])

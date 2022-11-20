@@ -294,13 +294,12 @@ class MultiUserEnvironment(AbstractEnvironment):
             doc_ids = list(self._current_documents)  # pytype: disable=attribute-error
             mapped_slate = [doc_ids[x] for x in slate]
             documents = self._candidate_set.get_documents(mapped_slate)
-            if user_model.is_terminal():
-                responses = []
-            else:
-                # Simulate the user's response
-                responses = user_model.simulate_response(documents)
 
-                # Update the user's state.
+            # Simulate the user's response
+            responses = user_model.simulate_response(documents)
+
+            # Update the user's state.
+            if not user_model.is_terminal():
                 user_model.update_state(documents, responses)
 
             # Obtain next user state observation.

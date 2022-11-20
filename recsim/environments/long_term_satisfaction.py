@@ -129,9 +129,11 @@ class LTSUserModel(user.AbstractUserModel):
         """
         # List of empty responses
         responses = [self._response_model_ctor() for _ in documents]
-        # User always clicks the first item.
-        selected_index = 0
-        self.generate_response(documents[selected_index], responses[selected_index])
+
+        if not self.is_terminal():
+            # User always clicks the first item.
+            selected_index = 0
+            self.generate_response(documents[selected_index], responses[selected_index])
         return responses
 
     def generate_response(self, doc, response):
