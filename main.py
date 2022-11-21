@@ -1,12 +1,13 @@
 
 import argparse
 import logging
+import copy
 
 import torch
 import numpy as np
 
 from env import make_env
-from agent import RandomAgent, TopPopAgent
+from agent import build_oldp_agent
 from utils import ReplayMemory, UserHistory
 
 
@@ -49,38 +50,22 @@ def parse_args() -> argparse.Namespace:
 
 
 def main():
-    # set seed
+    # Set seed
     torch.manual_seed(1234)
     np.random.seed(1234)
 
-    # load args
+    # Load args
     args = parse_args()
 
-    # build env
+    # 0. Initialize an experiment
     env = make_env(**vars(args))
     available_item_ids = env.reset()
+    memory = ReplayMemory()
     user_history = UserHistory(args.num_users, args.state_window_size)
-
-    # run old policy
-    if args.old_policy == 'random':
-        oldp_agent = RandomAgent(
-            args.num_users, args.num_candidates, args.slate_size
-        )
-    elif args.old_policy == 'toppop':
-        oldp_agent = TopPopAgent(
-            args.num_users, args.num_candidates, args.slate_size,
-            args.toppop_windowsize, args.toppop_stochasticity, local=False
-        )
-    elif args.old_policy == 'user_toppop':
-        oldp_agent = TopPopAgent(
-            args.num_users, args.num_candidates, args.slate_size,
-            args.toppop_windowsize, args.toppop_stochasticity, local=True
-        )
-    else:
-        raise NotImplementedError
-
-    memory_old = ReplayMemory()
     state = user_history.get_state()
+
+    # 1. Run old policy
+    oldp_agent = build_oldp_agent(args)
     num_total_responses = 0
     for i_step in range(args.oldp_length):
         # Run policy
@@ -92,21 +77,23 @@ def main():
             logging.warning(f'Whole users are terminated at {i_step}-th step.')
             break
 
+        # Restore data
         num_total_responses += np.sum(responses)
         for i_slate in range(args.slate_size):
             user_history.push(slates[:, i_slate], responses[:, i_slate])
             next_state = user_history.get_state()
             for i_user in range(args.num_users):
-                memory_old.push(state[i_user], slates[i_user, i_slate], next_state[i_user], responses[i_user, i_slate])
+                memory.push(state[i_user], slates[i_user, i_slate], next_state[i_user], responses[i_user, i_slate])
             state = next_state
 
-        # update agent
+        # Update agent
         oldp_agent.update_policy(i_step, slates, responses)
 
-    # run exploration policy
+    # 2. Run exploration policy
+    memory_old = copy.copy(memory)  # backup with a shallow copy (for the memory efficiency)
     print(num_total_responses)
 
-    # test
+    # 3. Evaluate
 
 
 if __name__ == '__main__':
