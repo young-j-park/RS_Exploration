@@ -5,17 +5,22 @@ import numpy as np
 
 
 class RandomAgent:
-    def __init__(self, num_users: int, num_candidates: int, slate_size: int):
+    def __init__(
+            self,
+            num_users: int,
+            num_candidates: int,
+            slate_size: int,
+    ):
         self.num_users = num_users
         self.num_candidates = num_candidates
         self.slate_size = slate_size
 
-    def update_policy(self, obs: np.ndarray):
-        pass
+    def update_policy(self, i_step: int, slates: np.ndarray, responses: np.ndarray):
+        return
 
     def select_action(
             self,
-            available_doc_ids: List[int]
+            available_item_ids: List[int]
     ):
         recs = [
             np.random.choice(

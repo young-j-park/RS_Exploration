@@ -6,7 +6,7 @@ import torch
 import numpy as np
 
 from env import make_env
-from agent.random import RandomAgent
+from agent import RandomAgent, TopPopAgent
 from utils import ReplayMemory, UserHistory
 
 
@@ -33,10 +33,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--expl_length', type=int, default=20)
     parser.add_argument('--test_length', type=int, default=30)
 
-    # policy
+    # old policy
     parser.add_argument(
-        '--oldp_policy', type=str, default='random', choices=['random']
+        '--old_policy',
+        type=str,
+        default='random',
+        choices=['random', 'user_toppop', 'toppop']
     )
+    parser.add_argument('--toppop_stochasticity', type=float, default=0.1)
+    parser.add_argument('--toppop_windowsize', type=int, default=20)
 
     args = parser.parse_args()
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -53,13 +58,23 @@ def main():
 
     # build env
     env = make_env(**vars(args))
-    available_doc_ids = env.reset()
+    available_item_ids = env.reset()
     user_history = UserHistory(args.num_users, args.state_window_size)
 
     # run old policy
-    if args.oldp_policy == 'random':
+    if args.old_policy == 'random':
         oldp_agent = RandomAgent(
             args.num_users, args.num_candidates, args.slate_size
+        )
+    elif args.old_policy == 'toppop':
+        oldp_agent = TopPopAgent(
+            args.num_users, args.num_candidates, args.slate_size,
+            args.toppop_windowsize, args.toppop_stochasticity, local=False
+        )
+    elif args.old_policy == 'user_toppop':
+        oldp_agent = TopPopAgent(
+            args.num_users, args.num_candidates, args.slate_size,
+            args.toppop_windowsize, args.toppop_stochasticity, local=True
         )
     else:
         raise NotImplementedError
@@ -69,10 +84,10 @@ def main():
     num_total_responses = 0
     for i_step in range(args.oldp_length):
         # Run policy
-        slates = oldp_agent.select_action(available_doc_ids)
+        slates = oldp_agent.select_action(available_item_ids)
 
         # Run simulator
-        available_doc_ids, responses, done = env.step(slates)
+        available_item_ids, responses, done = env.step(slates)
         if done:
             logging.warning(f'Whole users are terminated at {i_step}-th step.')
             break
@@ -86,7 +101,7 @@ def main():
             state = next_state
 
         # update agent
-        oldp_agent.update_policy(responses)
+        oldp_agent.update_policy(i_step, slates, responses)
 
     # run exploration policy
     print(num_total_responses)

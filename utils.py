@@ -33,21 +33,14 @@ class UserHistory:
         self.window_size = window_size
         self.pos_reactions = [deque([], maxlen=window_size) for _ in range(num_users)]
         self.neg_reactions = [deque([], maxlen=window_size) for _ in range(num_users)]
-        # self.pos_reactions = np.full((num_users, window_size), PAD_IDX)
-        # self.neg_reactions = np.full((num_users, window_size), PAD_IDX)
 
     def push(self, items, responses):
         assert len(items) == len(responses) == self.num_users
-        # cur_state = (np.copy(self.pos_reactions), np.copy(self.neg_reactions))
         for i_user in range(self.num_users):
             if responses[i_user]:
                 self.pos_reactions[i_user].append(items[i_user])
-                # self.pos_reactions[i_user] = np.concatenate((self.pos_reactions[i_user][1:], [items[i_user]]))
             else:
                 self.neg_reactions[i_user].append(items[i_user])
-                # self.neg_reactions[i_user] = np.concatenate((self.neg_reactions[i_user][1:], [items[i_user]]))
-        # next_state = (np.copy(self.pos_reactions), np.copy(self.neg_reactions))
-        # return cur_state, next_state
 
     def get_state(self):
         return np.stack(
