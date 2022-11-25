@@ -7,7 +7,7 @@ import numpy as np
 from agent.random import RandomAgent
 
 
-class TopPopAgent(RandomAgent):
+class TopPopAgent:
     def __init__(
             self,
             num_users: int,
@@ -17,7 +17,9 @@ class TopPopAgent(RandomAgent):
             stochasticity: float,
             local: bool = False,
     ):
-        super(TopPopAgent, self).__init__(num_users, num_candidates, slate_size)
+        self.num_users = num_users
+        self.num_candidates = num_candidates
+        self.slate_size = slate_size
         self.window_size = window_size
         self.stochasticity = stochasticity
         self.local = local
@@ -64,7 +66,7 @@ class TopPopAgent(RandomAgent):
         top_recs = np.array(top_recs)
 
         # Random Exploration with p
-        random_recs = super().select_action(available_item_ids)
+        random_recs = RandomAgent.select_random_action(self.num_users, self.num_candidates, self.slate_size)
         a_idx = np.zeros((self.num_users, 1), dtype=int)
         recs = np.zeros_like(top_recs)
         for i_slate in range(self.slate_size):
