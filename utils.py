@@ -25,6 +25,10 @@ class ReplayMemory(object):
         r = torch.as_tensor(r, dtype=torch.float).unsqueeze(0)
         self.memory.append(Transition(s, a, ns, r))
 
+    def push_tensor(self, *args):
+        """Save a transition"""
+        self.memory.append(Transition(*args))
+
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)
 
@@ -60,3 +64,27 @@ class UserHistory:
             out = np.full(self.window_size, PAD_IDX)
             out[:len(x)] = x
             return out
+
+
+def select_random_action(num_users, num_candidates, slate_size):
+    recs = [
+        np.random.choice(
+            np.arange(num_candidates),
+            slate_size,
+            replace=False
+        )
+        for _ in range(num_users)
+    ]
+    return np.array(recs)
+
+
+def add_random_action(original_recs, num_users, num_candidates, slate_size, p):
+    random_recs = select_random_action(num_users, num_candidates, slate_size)
+    a_idx = np.zeros((num_users, 1), dtype=int)
+    recs = np.zeros_like(original_recs, dtype=int)
+    for i_slate in range(slate_size):
+        random_mask = np.random.choice([True, False], num_users, p=p)
+        recs[random_mask, i_slate] = random_recs[random_mask, i_slate]
+        recs[~random_mask, i_slate] = np.take_along_axis(original_recs, a_idx.astype(int), axis=1)[~random_mask].squeeze()
+        a_idx[~random_mask] += 1
+    return recs

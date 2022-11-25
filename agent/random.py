@@ -3,6 +3,8 @@ from typing import List
 
 import numpy as np
 
+from utils import select_random_action
+
 
 class RandomAgent:
     def __init__(
@@ -22,18 +24,4 @@ class RandomAgent:
             self,
             available_item_ids: List[int]
     ) -> np.ndarray:
-        return self.select_random_action(self.num_users, self.num_candidates, self.slate_size)
-
-    @staticmethod
-    def select_random_action(num_users, num_candidates, slate_size):
-        recs = [
-            np.random.choice(
-                np.arange(num_candidates),
-                slate_size,
-                replace=False
-            )
-            for _ in range(num_users)
-        ]
-        return np.array(recs)
-
-
+        return select_random_action(self.num_users, self.num_candidates, self.slate_size)

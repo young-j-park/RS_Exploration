@@ -4,7 +4,7 @@ import logging
 
 import numpy as np
 
-from agent.random import RandomAgent
+from utils import select_random_action, add_random_action
 
 
 class TopPopAgent:
@@ -42,7 +42,7 @@ class TopPopAgent:
             available_item_ids: List[int],
     ) -> np.ndarray:
         if self.p is None:
-            return super().select_action(available_item_ids)
+            return select_random_action(self.num_users, self.num_candidates, self.slate_size)
 
         cum_counts = np.sum(self.counts, axis=0)
         if not self.local:
@@ -66,16 +66,8 @@ class TopPopAgent:
         top_recs = np.array(top_recs)
 
         # Random Exploration with p
-        random_recs = RandomAgent.select_random_action(self.num_users, self.num_candidates, self.slate_size)
-        a_idx = np.zeros((self.num_users, 1), dtype=int)
-        recs = np.zeros_like(top_recs)
-        for i_slate in range(self.slate_size):
-            random_mask = np.random.choice([True, False], self.num_users, p=self.p)
-            recs[random_mask, i_slate] = random_recs[random_mask, i_slate]
-            recs[~random_mask, i_slate] = np.take_along_axis(top_recs, a_idx.astype(int), axis=1)[~random_mask].squeeze()
-            a_idx[~random_mask] += 1
-
-        return np.array(recs)
+        recs = add_random_action(top_recs, self.num_users, self.num_candidates, self.slate_size, self.p)
+        return recs
 
     def begin_full_exploring(self):
         logging.info('Begin with random exploring.')
