@@ -17,7 +17,7 @@ class TopPopAgent(RandomAgent):
             stochasticity: float,
             local: bool = False,
     ):
-        super().__init__(num_users, num_candidates, slate_size)
+        super(TopPopAgent, self).__init__(num_users, num_candidates, slate_size)
         self.window_size = window_size
         self.stochasticity = stochasticity
         self.local = local
@@ -32,13 +32,13 @@ class TopPopAgent(RandomAgent):
                 cur_count[i_user, slates[i_user, i_slate]] += responses[i_user, i_slate]
         self.counts = np.concatenate((self.counts[1:], [cur_count]), 0)
 
-        if i_step >= self.window_size:
+        if self.p is None and i_step >= self.window_size:
             self.begin_partial_exploring()
 
     def select_action(
             self,
             available_item_ids: List[int],
-    ):
+    ) -> np.ndarray:
         if self.p is None:
             return super().select_action(available_item_ids)
 

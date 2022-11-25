@@ -3,6 +3,7 @@ import random
 from collections import namedtuple, deque
 
 import numpy as np
+import torch
 
 from config import PAD_IDX
 
@@ -15,9 +16,14 @@ class ReplayMemory(object):
     def __init__(self, capacity=None):
         self.memory = deque([], maxlen=capacity)
 
-    def push(self, *args):
+    def push_np(self, *args):
         """Save a transition"""
-        self.memory.append(Transition(*args))
+        s, a, ns, r = args
+        s = torch.as_tensor(s, dtype=torch.long).unsqueeze(0)
+        a = torch.as_tensor(a, dtype=torch.long).unsqueeze(0)
+        ns = torch.as_tensor(ns, dtype=torch.long).unsqueeze(0)
+        r = torch.as_tensor(r, dtype=torch.float).unsqueeze(0)
+        self.memory.append(Transition(s, a, ns, r))
 
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)

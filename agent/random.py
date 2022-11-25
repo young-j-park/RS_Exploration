@@ -21,7 +21,7 @@ class RandomAgent:
     def select_action(
             self,
             available_item_ids: List[int]
-    ):
+    ) -> np.ndarray:
         recs = [
             np.random.choice(
                 np.arange(self.num_candidates),
