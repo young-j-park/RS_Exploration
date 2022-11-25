@@ -47,7 +47,7 @@ class TopPopAgent(RandomAgent):
             cum_counts = np.sum(cum_counts, axis=0, keepdims=True)
             cum_counts = np.repeat(cum_counts, self.num_users, axis=0)
 
-        recs = []
+        top_recs = []
         for i_user in range(self.num_users):
             popularity = cum_counts[i_user] + 1e-10
             popularity = popularity / np.sum(popularity)
@@ -60,13 +60,18 @@ class TopPopAgent(RandomAgent):
                 )
             else:
                 rec_ids = np.argsort(-1 * popularity)[:self.slate_size]
-            recs.append(rec_ids)
-        recs = np.array(recs)
+            top_recs.append(rec_ids)
+        top_recs = np.array(top_recs)
 
         # Random Exploration with p
-        random_mask = np.random.choice([True, False], recs.shape, p=self.p)
         random_recs = super().select_action(available_item_ids)
-        recs[random_mask] = random_recs[random_mask]
+        a_idx = np.zeros((self.num_users, 1), dtype=int)
+        recs = np.zeros_like(top_recs)
+        for i_slate in range(self.slate_size):
+            random_mask = np.random.choice([True, False], self.num_users, p=self.p)
+            recs[random_mask, i_slate] = random_recs[random_mask, i_slate]
+            recs[~random_mask, i_slate] = np.take_along_axis(top_recs, a_idx.astype(int), axis=1)[~random_mask].squeeze()
+            a_idx[~random_mask] += 1
 
         return np.array(recs)
 
