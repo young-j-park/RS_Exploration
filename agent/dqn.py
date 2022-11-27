@@ -8,8 +8,8 @@ import torch.nn as nn
 import torch.optim as optim
 
 from agent.user import UserModel
-from utils import Transition
-from config import BATCH_SIZE, GAMMA
+from utils import Transition, add_random_action
+from config import BATCH_SIZE, GAMMA, TARGET_UPDATE
 
 
 class DQNAgent(nn.Module):
@@ -17,6 +17,7 @@ class DQNAgent(nn.Module):
     def __init__(
             self,
             num_candidates: int,
+            slate_size: int,
             emb_dim: int,
             aggregate: str,
             exploration_rate: float,
@@ -24,16 +25,18 @@ class DQNAgent(nn.Module):
     ):
         super(DQNAgent, self).__init__()
         self.num_candidates = num_candidates
-        self.exploration_rate = exploration_rate
+        self.slate_size = slate_size
+        self.p = [exploration_rate, 1 - exploration_rate]
         self.policy_net = DQN(num_candidates, emb_dim, aggregate).to(device)
         self.target_net = DQN(num_candidates, emb_dim, aggregate).to(device)
-        self.target_net.load_state_dict(self.policy_net.state_dict())
-        self.target_net.eval()
-        self.optimizer = optim.RMSprop(self.policy_net.parameters())
+        self.optimizer = optim.RMSprop(self.policy_net.parameters(), lr=1e-3)
         self.device = device
 
-    def update_policy(self, memory, train_epoch=1000):
-        for i_epoch in range(train_epoch+1):
+    def update_policy(self, memory, train_epoch=1000, log_interval=100):
+        self.policy_net.train()
+        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.target_net.eval()
+        for i_epoch in range(1, train_epoch+1):
             transitions = memory.sample(BATCH_SIZE)
             # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
             # detailed explanation). This converts batch-array of Transitions
@@ -80,28 +83,23 @@ class DQNAgent(nn.Module):
                 param.grad.data.clamp_(-1, 1)
             self.optimizer.step()
 
-            if i_epoch % 100 == 0:
+            if i_epoch % log_interval == 0:
                 logging.info(f'[{i_epoch:03d}/{train_epoch}] Training Loss: {loss}')
 
+            if i_epoch % TARGET_UPDATE == 0:
+                self.target_net.load_state_dict(self.policy_net.state_dict())
 
-    def select_action(self, state):
-        pass
-
-    def select_one_action(self, state_arr: np.ndarray) -> torch.Tensor:
+    def select_action(self, state_arr: np.ndarray) -> torch.Tensor:
+        self.policy_net.eval()
+        bs = len(state_arr)
         state = torch.tensor(state_arr, dtype=torch.long, device=self.device)
-        sample = random.random()
-        if sample > self.exploration_rate:
-            with torch.no_grad():
-                # t.max(1) will return largest column value of each row.
-                # second column on max result is index of where max element was
-                # found, so we pick action with the larger expected reward.
-                return self.policy_net(state).max(1)[1].view(1, 1)
-        else:
-            return torch.tensor(
-                [[random.randrange(self.num_candidates)]],
-                device=self.device,
-                dtype=torch.long
-            )
+        with torch.no_grad():
+            q = self.policy_net(state)
+            q_recs = torch.argsort(q)
+
+        q_recs = q_recs.detach().cpu().numpy()[:, :self.slate_size]
+        recs = add_random_action(q_recs, self.num_candidates, self.slate_size, self.p)
+        return recs
 
 
 class DQN(nn.Module):
@@ -114,19 +112,19 @@ class DQN(nn.Module):
     ):
         super(DQN, self).__init__()
         self.state_model = UserModel(num_candidates, emb_dim, aggregate)
-        self.bn = nn.BatchNorm1d(emb_dim)
+        # self.bn = nn.BatchNorm1d(emb_dim)
 
         # # Simple linear
-        # self.head = nn.Sequential(
-        #     nn.Linear(emb_dim, num_candidates)
-        # )
+        self.head = nn.Sequential(
+            nn.Linear(emb_dim, num_candidates)
+        )
 
         # 2-MLP
-        self.head = nn.Sequential(
-            nn.Linear(emb_dim, num_candidates//2),
-            nn.ReLU(),
-            nn.Linear(num_candidates//2, num_candidates)
-        )
+        # self.head = nn.Sequential(
+        #     nn.Linear(emb_dim, num_candidates//2),
+        #     nn.ReLU(),
+        #     nn.Linear(num_candidates//2, num_candidates)
+        # )
 
         # # 3-MLP
         # self.head = nn.Sequential(
@@ -146,6 +144,6 @@ class DQN(nn.Module):
             q-values: (N, A)
 
         """
-        emb = self.bn(self.state_model(state))
+        emb = self.state_model(state)  # self.bn()
         q_vals = self.head(emb)
         return q_vals

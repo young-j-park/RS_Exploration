@@ -34,8 +34,8 @@ def build_newp_agent(args):
 
     if args.new_policy == 'dqn':
         newp_agent = DQNAgent(
-            args.num_candidates, args.state_emb_dim, args.agg_method,
-            args.exploration_rate, args.device
+            args.num_candidates, args.slate_size, args.state_emb_dim,
+            args.agg_method, args.exploration_rate, args.device
         )
     else:
         raise NotImplementedError

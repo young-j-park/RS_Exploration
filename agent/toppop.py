@@ -66,7 +66,7 @@ class TopPopAgent:
         top_recs = np.array(top_recs)
 
         # Random Exploration with p
-        recs = add_random_action(top_recs, self.num_users, self.num_candidates, self.slate_size, self.p)
+        recs = add_random_action(top_recs, self.num_candidates, self.slate_size, self.p)
         return recs
 
     def begin_full_exploring(self):

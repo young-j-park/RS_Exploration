@@ -16,7 +16,7 @@ class ReplayMemory(object):
     def __init__(self, capacity=None):
         self.memory = deque([], maxlen=capacity)
 
-    def push_np(self, *args):
+    def push(self, *args):
         """Save a transition"""
         s, a, ns, r = args
         s = torch.as_tensor(s, dtype=torch.long).unsqueeze(0)
@@ -24,10 +24,6 @@ class ReplayMemory(object):
         ns = torch.as_tensor(ns, dtype=torch.long).unsqueeze(0)
         r = torch.as_tensor(r, dtype=torch.float).unsqueeze(0)
         self.memory.append(Transition(s, a, ns, r))
-
-    def push_tensor(self, *args):
-        """Save a transition"""
-        self.memory.append(Transition(*args))
 
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)
@@ -78,7 +74,8 @@ def select_random_action(num_users, num_candidates, slate_size):
     return np.array(recs)
 
 
-def add_random_action(original_recs, num_users, num_candidates, slate_size, p):
+def add_random_action(original_recs, num_candidates, slate_size, p):
+    num_users = len(original_recs)
     random_recs = select_random_action(num_users, num_candidates, slate_size)
     a_idx = np.zeros((num_users, 1), dtype=int)
     recs = np.zeros_like(original_recs, dtype=int)
