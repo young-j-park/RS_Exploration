@@ -110,6 +110,10 @@ def main():
         newp_agent.update_policy(memory, train_epoch=1_000, log_interval=1000)
 
     # 5. Evaluate
+    newp_agent.undo_exploration()
+    for i_step in range(args.test_length):
+        step(i_step, env, user_history, state, newp_agent, memory, evaluators['test'], args)
+        # newp_agent.update_policy(memory, train_epoch=1_000, log_interval=1000)
 
 
 def step(i_step, env, user_history, state, agent, memory, evaluator, args):

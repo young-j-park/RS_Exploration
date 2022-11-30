@@ -1,5 +1,4 @@
 
-import random
 import logging
 
 import numpy as np
@@ -26,11 +25,18 @@ class DQNAgent(nn.Module):
         super(DQNAgent, self).__init__()
         self.num_candidates = num_candidates
         self.slate_size = slate_size
+        self.exploration_rate = exploration_rate
         self.p = [exploration_rate, 1 - exploration_rate]
         self.policy_net = DQN(num_candidates, emb_dim, aggregate).to(device)
         self.target_net = DQN(num_candidates, emb_dim, aggregate).to(device)
         self.optimizer = optim.RMSprop(self.policy_net.parameters(), lr=1e-3)
         self.device = device
+
+    def undo_exploration(self):
+        self.p = None
+
+    def do_exploration(self):
+        self.p = [self.exploration_rate, 1 - self.exploration_rate]
 
     def update_policy(self, memory, train_epoch=1000, log_interval=100):
         self.policy_net.train()
@@ -49,13 +55,13 @@ class DQNAgent(nn.Module):
                 tuple(map(lambda s: s is not None, batch.next_state)),
                 device=self.device,
                 dtype=torch.bool
-            )
+            ).to(self.device)
             non_final_next_states = torch.cat(
                 [s for s in batch.next_state if s is not None]
-            )
-            state_batch = torch.cat(batch.state)
-            action_batch = torch.cat(batch.action)
-            reward_batch = torch.cat(batch.reward)
+            ).to(self.device)
+            state_batch = torch.cat(batch.state).to(self.device)
+            action_batch = torch.cat(batch.action).to(self.device)
+            reward_batch = torch.cat(batch.reward).to(self.device)
 
             # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
             # columns of actions taken. These are the actions which would've been taken
@@ -98,8 +104,11 @@ class DQNAgent(nn.Module):
             q_recs = torch.argsort(q)
 
         q_recs = q_recs.detach().cpu().numpy()[:, :self.slate_size]
-        recs = add_random_action(q_recs, self.num_candidates, self.slate_size, self.p)
-        return recs
+        if self.p:
+            recs = add_random_action(q_recs, self.num_candidates, self.slate_size, self.p)
+            return recs
+        else:
+            return q_recs
 
 
 class DQN(nn.Module):
