@@ -82,4 +82,3 @@ class CDQNAgent(DQNAgent):
 
             if i_epoch % TARGET_UPDATE == 0:
                 self.target_net.load_state_dict(self.policy_net.state_dict())
-ß
