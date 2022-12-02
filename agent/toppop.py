@@ -4,7 +4,7 @@ import logging
 
 import numpy as np
 
-from utils import select_random_action, add_random_action
+from utils import ReplayMemory, select_random_action, add_random_action
 
 
 class TopPopAgent:
@@ -27,15 +27,18 @@ class TopPopAgent:
         self.p = None
         self.begin_full_exploring()
 
-    def update_policy(self, i_step: int, slates: np.ndarray, responses: np.ndarray):
+    def update_policy(
+            self,
+            slates: np.ndarray,
+            responses: np.ndarray,
+            memory: ReplayMemory,
+            **kwargs
+    ):
         cur_count = np.zeros((self.num_users, self.num_candidates))
         for i_user in range(self.num_users):
             for i_slate in range(self.slate_size):
                 cur_count[i_user, slates[i_user, i_slate]] += responses[i_user, i_slate]
         self.counts = np.concatenate((self.counts[1:], [cur_count]), 0)
-
-        if self.p is None and i_step >= self.window_size:
-            self.begin_partial_exploring()
 
     def select_action(
             self,

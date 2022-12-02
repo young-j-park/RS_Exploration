@@ -1,47 +1,21 @@
 
 import logging
 
-import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
+import numpy as np
 
-from agent.user import UserModel
-from utils import Transition, ReplayMemory, add_random_action
+from agent import DQNAgent
+from utils import Transition, ReplayMemory
 from config import BATCH_SIZE, GAMMA, TARGET_UPDATE
 
 
-class DQNAgent(nn.Module):
-
-    def __init__(
-            self,
-            num_candidates: int,
-            slate_size: int,
-            emb_dim: int,
-            aggregate: str,
-            exploration_rate: float,
-            device: "torch.device",
-    ):
-        super(DQNAgent, self).__init__()
-        self.num_candidates = num_candidates
-        self.slate_size = slate_size
-        self.exploration_rate = exploration_rate
-        self.p = [exploration_rate, 1 - exploration_rate]
-        self.policy_net = DQN(num_candidates, emb_dim, aggregate).to(device)
-        self.target_net = DQN(num_candidates, emb_dim, aggregate).to(device)
-        self.optimizer = optim.RMSprop(self.policy_net.parameters(), lr=1e-3)
-        self.device = device
-
-    def undo_exploration(self):
-        self.p = None
-
-    def do_exploration(self):
-        self.p = [self.exploration_rate, 1 - self.exploration_rate]
+class CDQNAgent(DQNAgent):
 
     def update_policy(
             self,
-            slates: np.ndarray or None,
-            responses: np.ndarray or None,
+            slates: np.ndarray,
+            responses: np.ndarray,
             memory: ReplayMemory,
             train_epoch: int = 1000,
             log_interval: int = 100,
@@ -73,7 +47,8 @@ class DQNAgent(nn.Module):
             # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
             # columns of actions taken. These are the actions which would've been taken
             # for each batch state according to policy_net
-            state_action_values = self.policy_net(state_batch).gather(1, action_batch)
+            q_values = self.policy_net(state_batch)
+            state_action_values = q_values.gather(1, action_batch)
 
             # Compute V(s_{t+1}) for all next states.
             # Expected values of actions for non_final_next_states are computed based
@@ -89,6 +64,12 @@ class DQNAgent(nn.Module):
             criterion = nn.SmoothL1Loss()
             loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
 
+            # Add CQN loss
+            dataset_expec = torch.mean(state_action_values)
+            negative_sampling = torch.mean(torch.logsumexp(q_values, 1))
+            min_q_loss = (negative_sampling - dataset_expec)
+            loss += min_q_loss
+
             # Optimize the model
             self.optimizer.zero_grad()
             loss.backward()
@@ -101,66 +82,4 @@ class DQNAgent(nn.Module):
 
             if i_epoch % TARGET_UPDATE == 0:
                 self.target_net.load_state_dict(self.policy_net.state_dict())
-
-    def select_action(self, state_arr: np.ndarray) -> torch.Tensor:
-        self.policy_net.eval()
-        bs = len(state_arr)
-        state = torch.tensor(state_arr, dtype=torch.long, device=self.device)
-        with torch.no_grad():
-            q = self.policy_net(state)
-            q_recs = torch.argsort(q)
-
-        q_recs = q_recs.detach().cpu().numpy()[:, :self.slate_size]
-        if self.p:
-            recs = add_random_action(q_recs, self.num_candidates, self.slate_size, self.p)
-            return recs
-        else:
-            return q_recs
-
-
-class DQN(nn.Module):
-
-    def __init__(
-            self,
-            num_candidates: int,
-            emb_dim: int,
-            aggregate: str,
-    ):
-        super(DQN, self).__init__()
-        self.state_model = UserModel(num_candidates, emb_dim, aggregate)
-        # self.bn = nn.BatchNorm1d(emb_dim)
-
-        # # Simple linear
-        head_layer = nn.Linear(emb_dim, num_candidates)
-        nn.init.constant_(head_layer.weight, 0.0)
-        nn.init.uniform_(head_layer.bias, 0.0, 0.0)
-        self.head = head_layer
-
-        # 2-MLP
-        # self.head = nn.Sequential(
-        #     nn.Linear(emb_dim, num_candidates//2),
-        #     nn.ReLU(),
-        #     nn.Linear(num_candidates//2, num_candidates)
-        # )
-
-        # # 3-MLP
-        # self.head = nn.Sequential(
-        #     nn.Linear(emb_dim, num_candidates//4),
-        #     nn.ReLU(),
-        #     nn.Linear(num_candidates//4, num_candidates//2),
-        #     nn.ReLU(),
-        #     nn.Linear(num_candidates//2, num_candidates)
-        # )
-
-    def forward(self, state):
-        """
-        Args:
-            state: (N, 2, W)
-
-        Returns:
-            q-values: (N, A)
-
-        """
-        emb = self.state_model(state)  # self.bn()
-        q_vals = self.head(emb)
-        return q_vals
+ß

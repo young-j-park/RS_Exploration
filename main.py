@@ -56,7 +56,7 @@ def parse_args() -> argparse.Namespace:
         '--new_policy',
         type=str,
         default='dqn',
-        choices=['dqn', 'cdqn']
+        choices=['dqn', 'cdqn', 'random', 'user_toppop', 'toppop']
     )
     parser.add_argument('--exploration_rate', type=float, default=0.1)
 
@@ -93,21 +93,26 @@ def main():
     oldp_agent = build_oldp_agent(args)
     for i_step in range(args.oldp_length):
         slates, responses = step(i_step, env, user_history, state, oldp_agent, memory, evaluators['oldp'], args)
-        oldp_agent.update_policy(i_step, slates, responses)
+        oldp_agent.update_policy(slates, responses, memory)
+
+        if oldp_agent.p is None and i_step >= oldp_agent.window_size:
+            oldp_agent.begin_partial_exploring()
 
     # 2. Evaluate the old policy
     memory_old = copy.copy(memory)  # backup with a shallow copy (for the memory efficiency)
 
     # 3. Build & pre-train a new policy (newp)
-    newp_agent = build_newp_agent(args)
-
-    logging.info(f'Pre-train a {args.new_policy.upper()} agent.')
-    newp_agent.update_policy(memory_old, train_epoch=10_000, log_interval=1000)
+    if 'dqn' in args.new_policy:
+        newp_agent = build_newp_agent(args)
+        logging.info(f'Pre-train a {args.new_policy.upper()} agent.')
+        newp_agent.update_policy(None, None, memory, train_epoch=10_000, log_interval=1000)
+    else:
+        newp_agent = oldp_agent
 
     # 4. Run exploration
     for i_step in range(args.expl_length):
-        step(i_step, env, user_history, state, newp_agent, memory, evaluators['newp'], args)
-        newp_agent.update_policy(memory, train_epoch=1_000, log_interval=1000)
+        slates, responses = step(i_step, env, user_history, state, newp_agent, memory, evaluators['newp'], args)
+        newp_agent.update_policy(slates, responses, memory, train_epoch=1_000, log_interval=1000)
 
     # 5. Evaluate
     newp_agent.undo_exploration()

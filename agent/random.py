@@ -3,7 +3,7 @@ from typing import List
 
 import numpy as np
 
-from utils import select_random_action
+from utils import ReplayMemory, select_random_action
 
 
 class RandomAgent:
@@ -17,7 +17,13 @@ class RandomAgent:
         self.num_candidates = num_candidates
         self.slate_size = slate_size
 
-    def update_policy(self, i_step: int, slates: np.ndarray, responses: np.ndarray):
+    def update_policy(
+            self,
+            slates: np.ndarray,
+            responses: np.ndarray,
+            memory: ReplayMemory,
+            **kwargs
+    ):
         return
 
     def select_action(
