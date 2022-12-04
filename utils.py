@@ -5,7 +5,7 @@ from collections import namedtuple, deque
 import numpy as np
 import torch
 
-from config import PAD_IDX
+from config.config import PAD_IDX
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))

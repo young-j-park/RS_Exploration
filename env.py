@@ -1,5 +1,5 @@
 
-from typing import List
+import logging
 
 import numpy as np
 
@@ -62,4 +62,6 @@ def make_env(
         raise ValueError(f'{env_type} is not supported.')
 
     env = MyEnv(env)
+    env.reset()
+    logging.info(f'Environment -- {env_type} -- has been built.')
     return env

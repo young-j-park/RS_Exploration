@@ -1,18 +1,20 @@
 
+import uuid
 import os
 import argparse
 import logging
 import random
-import copy
 import pickle as pkl
 
 import torch
 import numpy as np
+import yaml
 
 from env import make_env
-from agent import build_oldp_agent, build_newp_agent
+from agent import build_agent
 from utils import ReplayMemory, UserHistory
 from evaluator import Evaluator
+from config.config import SAVE_DIR
 
 
 def parse_args() -> argparse.Namespace:
@@ -22,16 +24,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--seed', type=int, default=0)
 
     # env
-    parser.add_argument(
-        '--env_type',
-        type=str,
-        default='interest_exploration',
-        choices=['interest_evolution', 'interest_exploration']
-    )
-
-    parser.add_argument('--num_users', type=int, default=1000)
-    parser.add_argument('--num_candidates', type=int, default=1700)
-    parser.add_argument('--slate_size', type=int, default=3)
+    parser.add_argument('--env_config', type=str, default='ie_debug')
 
     # user state (model)
     parser.add_argument('--state_window_size', type=int, default=28)
@@ -39,9 +32,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--agg_method', type=str, default='gru', choices=['mean', 'gru'])
 
     # policy length
-    parser.add_argument('--oldp_length', type=int, default=7*15)
+    parser.add_argument('--warmup_length', type=int, default=7*4)
+    parser.add_argument('--oldp_length', type=int, default=7*8)
     parser.add_argument('--expl_length', type=int, default=7*4)
     parser.add_argument('--test_length', type=int, default=7*4)
+
+    # common
+    parser.add_argument('--exploration_rate', type=float, default=0.05)
 
     # old policy
     parser.add_argument(
@@ -50,7 +47,7 @@ def parse_args() -> argparse.Namespace:
         default='user_toppop',
         choices=['random', 'toppop', 'user_toppop']
     )
-    parser.add_argument('--toppop_stochasticity', type=float, default=0.05)
+    parser.add_argument('--toppop_stochastic', type=bool, default=True)
     parser.add_argument('--toppop_windowsize', type=int, default=28)
 
     # new policy
@@ -60,13 +57,18 @@ def parse_args() -> argparse.Namespace:
         default='dqn',
         choices=['dqn', 'cdqn', 'random', 'user_toppop', 'toppop']
     )
-    parser.add_argument('--exploration_rate', type=float, default=0.05)
 
     args = parser.parse_args()
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     if args.seed is None:
         args.seed = random.randint(0, 10000)
         logging.info(f'Set seed as {args.seed}.')
+    with open(f'./config/env_{args.env_config}.yaml') as f:
+        data = yaml.load(f, Loader=yaml.FullLoader)
+        args.env_type = data['env_type']
+        args.num_users = int(data['num_users'])
+        args.num_candidates = int(data['num_candidates'])
+        args.slate_size = int(data['slate_size'])
     return args
 
 
@@ -84,35 +86,36 @@ def main():
 
     # 0. Initialize an experiment
     env = make_env(**vars(args))
-    available_item_ids = env.reset()
     memory = ReplayMemory()
     user_history = UserHistory(args.num_users, args.state_window_size)
     state = user_history.get_state()
     evaluators = {
+        'warmup': Evaluator(),
         'oldp': Evaluator(),
         'newp': Evaluator(),
         'test': Evaluator(),
     }
 
-    # 1. Run an old policy (oldp)
-    oldp_agent = build_oldp_agent(args)
+    # 1. Warm-Up
+    random_agent = build_agent(args, 'random')
+    for i_step in range(args.warmup_length):
+        slates, responses, state = step(i_step, env, user_history, state, random_agent, memory, evaluators['warmup'], args)
+
+    # 2. Run an old policy (oldp)
+    oldp_agent = build_agent(args, args.old_policy)
     for i_step in range(args.oldp_length):
         slates, responses, state = step(i_step, env, user_history, state, oldp_agent, memory, evaluators['oldp'], args)
         oldp_agent.update_policy(slates, responses, memory)
 
-        if oldp_agent.p is None and i_step >= oldp_agent.window_size:
-            oldp_agent.begin_partial_exploring()
-
-    # 2. Evaluate the old policy
-    memory_old = copy.copy(memory)  # backup with a shallow copy (for the memory efficiency)
-
     # 3. Build & pre-train a new policy (newp)
     if 'dqn' in args.new_policy:
-        newp_agent = build_newp_agent(args)
+        newp_agent = build_agent(args, args.new_policy)
         logging.info(f'Pre-train a {args.new_policy.upper()} agent.')
         newp_agent.update_policy(None, None, memory, train_steps=10_000, log_interval=1000)
-    else:
+    elif args.old_policy == args.new_policy:
         newp_agent = oldp_agent
+    else:
+        raise NotImplementedError
 
     # 4. Run exploration
     for i_step in range(args.expl_length):
@@ -122,12 +125,20 @@ def main():
     # 5. Evaluate
     newp_agent.undo_exploration()
     for i_step in range(args.test_length):
-        _, _, state = step(i_step, env, user_history, state, newp_agent, memory, evaluators['test'], args)
-        # newp_agent.update_policy(memory, train_epoch=1_000, log_interval=1000)
+        slates, responses, state = step(i_step, env, user_history, state, newp_agent, memory, evaluators['test'], args)
+        newp_agent.update_policy(slates, responses, memory, train_steps=1_000, log_interval=1000)
 
-    os.makedirs('./results', exist_ok=True)
-    with open(f'./results/{args.new_policy}_seed{args.seed}', 'wb') as f:
-        pkl.dump({'args': vars(args), **evaluators}, f)
+    def _get_save_path(args):
+        pth = None
+        while pth is None or os.path.isfile(pth):
+            experiment_id = uuid.uuid4()
+            pth = f'{SAVE_DIR}/{args.env_config}_{args.new_policy}_seed{args.seed}_{experiment_id}.pkl'
+        return pth
+
+    os.makedirs(SAVE_DIR, exist_ok=True)
+    save_path = _get_save_path(args)
+    with open(save_path, 'wb') as f:
+        pkl.dump({'evaluators': evaluators, **vars(args)}, f)
     logging.info('Results are saved.')
 
 
@@ -153,6 +164,7 @@ def step(i_step, env, user_history, state, agent, memory, evaluator, args):
             memory.push(state[i_user], [slates[i_user, i_slate]], next_state[i_user], responses[i_user, i_slate])
         state = next_state
 
+    logging.debug([slates, responses])
     return slates, responses, state
 
 

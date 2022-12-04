@@ -7,7 +7,7 @@ import numpy as np
 
 from agent import DQNAgent
 from utils import Transition, ReplayMemory
-from config import BATCH_SIZE, GAMMA, TARGET_UPDATE
+from config.config import BATCH_SIZE, GAMMA, TARGET_UPDATE
 
 
 class CDQNAgent(DQNAgent):

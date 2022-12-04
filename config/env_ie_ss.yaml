@@ -1,0 +1,5 @@
+
+env_type: interest_exploration
+num_users: 100
+num_candidates: 170
+slate_size: 3

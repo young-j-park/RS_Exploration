@@ -7,43 +7,34 @@ from .dqn import DQNAgent
 from .cdqn import CDQNAgent
 
 
-def build_oldp_agent(args):
-    logging.info(f'Old Agent: {args.old_policy.upper()}')
+def build_agent(args, policy_name: str):
+    logging.info(f'Agent: {policy_name}')
 
-    if args.old_policy == 'random':
-        oldp_agent = RandomAgent(
+    if policy_name == 'random':
+        agent = RandomAgent(
             args.num_users, args.num_candidates, args.slate_size
         )
-    elif args.old_policy == 'toppop':
-        oldp_agent = TopPopAgent(
-            args.num_users, args.num_candidates, args.slate_size,
-            args.toppop_windowsize, args.toppop_stochasticity, local=False
+    elif policy_name == 'toppop':
+        agent = TopPopAgent(
+            args.num_users, args.num_candidates, args.slate_size, args.toppop_windowsize,
+            args.toppop_stochastic, args.exploration_rate, local=False
         )
-    elif args.old_policy == 'user_toppop':
-        oldp_agent = TopPopAgent(
-            args.num_users, args.num_candidates, args.slate_size,
-            args.toppop_windowsize, args.toppop_stochasticity, local=True
+    elif policy_name == 'user_toppop':
+        agent = TopPopAgent(
+            args.num_users, args.num_candidates, args.slate_size, args.toppop_windowsize,
+            args.toppop_stochastic, args.exploration_rate, local=True
         )
-    else:
-        raise NotImplementedError
-
-    return oldp_agent
-
-
-def build_newp_agent(args):
-    logging.info(f'New Agent: {args.new_policy.upper()}')
-
-    if args.new_policy == 'dqn':
-        newp_agent = DQNAgent(
+    elif args.new_policy == 'dqn':
+        agent = DQNAgent(
             args.num_candidates, args.slate_size, args.state_emb_dim,
             args.agg_method, args.exploration_rate, args.device
         )
     elif args.new_policy == 'cdqn':
-        newp_agent = CDQNAgent(
+        agent = CDQNAgent(
             args.num_candidates, args.slate_size, args.state_emb_dim,
             args.agg_method, args.exploration_rate, args.device
         )
     else:
         raise NotImplementedError
 
-    return newp_agent
+    return agent

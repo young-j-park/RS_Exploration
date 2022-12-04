@@ -31,3 +31,9 @@ class RandomAgent:
             available_item_ids: List[int]
     ) -> np.ndarray:
         return select_random_action(self.num_users, self.num_candidates, self.slate_size)
+
+    def undo_exploration(self):
+        return
+
+    def do_exploration(self):
+        return

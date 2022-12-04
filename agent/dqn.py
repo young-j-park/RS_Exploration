@@ -8,7 +8,7 @@ import torch.optim as optim
 
 from agent.user import UserModel
 from utils import Transition, ReplayMemory, add_random_action
-from config import BATCH_SIZE, GAMMA, TARGET_UPDATE
+from config.config import BATCH_SIZE, GAMMA, TARGET_UPDATE
 
 
 class DQNAgent(nn.Module):
@@ -29,7 +29,7 @@ class DQNAgent(nn.Module):
         self.p = [exploration_rate, 1 - exploration_rate]
         self.policy_net = DQN(num_candidates, emb_dim, aggregate).to(device)
         self.target_net = DQN(num_candidates, emb_dim, aggregate).to(device)
-        self.optimizer = optim.RMSprop(self.policy_net.parameters())
+        self.optimizer = optim.RMSprop(self.policy_net.parameters(), lr=1e-3)
         self.device = device
 
     def undo_exploration(self):
@@ -92,8 +92,8 @@ class DQNAgent(nn.Module):
             # Optimize the model
             self.optimizer.zero_grad()
             loss.backward()
-            for param in self.policy_net.parameters():
-                param.grad.data.clamp_(-1, 1)
+            # for param in self.policy_net.parameters():
+            #     param.grad.data.clamp_(-1, 1)
             self.optimizer.step()
 
             if i_step % log_interval == 0:
@@ -111,6 +111,7 @@ class DQNAgent(nn.Module):
             q_recs = torch.argsort(q, descending=True)
 
         q_recs = q_recs.detach().cpu().numpy()[:, :self.slate_size]
+        logging.debug(q[0][q_recs[0]])
         if self.p:
             recs = add_random_action(q_recs, self.num_candidates, self.slate_size, self.p)
             return recs
@@ -131,21 +132,21 @@ class DQN(nn.Module):
         # self.bn = nn.BatchNorm1d(emb_dim)
 
         # # Simple linear
-        head_layer = nn.Linear(emb_dim, num_candidates)  # inner_product(X_user, X_item)
+        head_layer = nn.Linear(2*emb_dim, num_candidates)  # inner_product(X_user, X_item)
         # nn.init.constant_(head_layer.weight, 0.0)  # item emb
         # nn.init.uniform_(head_layer.bias, 0.0, 0.0)  # item popularity bias
         self.head = head_layer
 
         # 2-MLP
         # self.head = nn.Sequential(
-        #     nn.Linear(emb_dim, num_candidates//2),
+        #     nn.Linear(2*emb_dim, num_candidates//2),
         #     nn.ReLU(),
         #     nn.Linear(num_candidates//2, num_candidates)
         # )
 
         # # 3-MLP
         # self.head = nn.Sequential(
-        #     nn.Linear(emb_dim, num_candidates//4),
+        #     nn.Linear(2*emb_dim, num_candidates//4),
         #     nn.ReLU(),
         #     nn.Linear(num_candidates//4, num_candidates//2),
         #     nn.ReLU(),

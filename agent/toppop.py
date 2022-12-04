@@ -14,18 +14,19 @@ class TopPopAgent:
             num_candidates: int,
             slate_size: int,
             window_size: int,
-            stochasticity: float,
+            stochastic: bool,
+            exploration_rate: float,
             local: bool = False,
     ):
         self.num_users = num_users
         self.num_candidates = num_candidates
         self.slate_size = slate_size
         self.window_size = window_size
-        self.stochasticity = stochasticity
+        self.stochastic = stochastic
+        self.exploration_rate = exploration_rate
         self.local = local
         self.counts = np.zeros((window_size, num_users, num_candidates))
-        self.p = None
-        self.begin_full_exploring()
+        self.p = [self.exploration_rate, 1-self.exploration_rate]
 
     def update_policy(
             self,
@@ -44,8 +45,6 @@ class TopPopAgent:
             self,
             available_item_ids: List[int],
     ) -> np.ndarray:
-        if self.p is None:
-            return select_random_action(self.num_users, self.num_candidates, self.slate_size)
 
         cum_counts = np.sum(self.counts, axis=0)
         if not self.local:
@@ -56,7 +55,7 @@ class TopPopAgent:
         for i_user in range(self.num_users):
             popularity = cum_counts[i_user] + 1e-10
             popularity = popularity / np.sum(popularity)
-            if self.stochasticity > 0.0:
+            if self.stochastic:
                 rec_ids = np.random.choice(
                     np.arange(self.num_candidates),
                     self.slate_size,
@@ -69,16 +68,18 @@ class TopPopAgent:
         top_recs = np.array(top_recs)
 
         # Random Exploration with p
-        recs = add_random_action(top_recs, self.num_candidates, self.slate_size, self.p)
-        return recs
+        if self.p is not None:
+            recs = add_random_action(top_recs, self.num_candidates, self.slate_size, self.p)
+            return recs
+        else:
+            return top_recs
 
-    def begin_full_exploring(self):
-        logging.info('Begin with random exploring.')
+    def undo_exploration(self):
         self.p = None
 
-    def begin_partial_exploring(self):
-        logging.info(f'Start partial exploring: p={self.stochasticity}.')
-        self.p = [self.stochasticity, 1-self.stochasticity]
+    def do_exploration(self):
+        self.p = [self.exploration_rate, 1 - self.exploration_rate]
+
 
 
 
