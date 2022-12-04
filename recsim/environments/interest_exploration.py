@@ -40,6 +40,7 @@ scenario can be seen as a correlated arms bandit problem.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+import logging
 
 from gym import spaces
 import numpy as np
@@ -403,23 +404,23 @@ def create_multiuser_environment(env_config) -> environment.MultiUserEnvironment
     IEResponse.NUM_CLUSTERS = document_sampler.num_clusters
 
     num_users = env_config.get('num_users', 1)
-    if num_users > 1:
-        user_models = [
-            IEUserModel(
-                env_config['slate_size'],
-                user_state_ctor=IEUserState,
-                response_model_ctor=IEResponse,
-                seed=env_config['seed'])
-            for _ in range(num_users)
-        ]
-    else:
-        raise ValueError('num_users should be specified and larger than 1.')
+    user_models = [
+        IEUserModel(
+            env_config['slate_size'],
+            user_state_ctor=IEUserState,
+            response_model_ctor=IEResponse,
+            seed=env_config['seed'])
+        for _ in range(num_users)
+    ]
+    if num_users == 1:
+        logging.warning('num_users is 1.')
 
     ieenv = environment.MultiUserEnvironment(
         user_models,
         document_sampler,
         env_config['num_candidates'],
         env_config['slate_size'],
-        resample_documents=env_config['resample_documents'])
+        resample_documents=env_config['resample_documents']
+    )
 
     return ieenv
