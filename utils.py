@@ -26,7 +26,8 @@ class ReplayMemory(object):
         self.memory.append(Transition(s, a, ns, r))
 
     def sample(self, batch_size):
-        return random.sample(self.memory, batch_size)
+        _batch_size = min(batch_size, len(self.memory))
+        return random.sample(self.memory, _batch_size)
 
     def __len__(self):
         return len(self.memory)
@@ -58,7 +59,8 @@ class UserHistory:
             return np.array(x)
         else:
             out = np.full(self.window_size, PAD_IDX)
-            out[:len(x)] = x
+            if len(x) > 0:
+                out[-len(x):] = x
             return out
 
 
