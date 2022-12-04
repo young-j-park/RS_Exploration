@@ -1,8 +1,10 @@
 
+import os
 import argparse
 import logging
 import random
 import copy
+import pickle as pkl
 
 import torch
 import numpy as np
@@ -17,7 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     # seed
-    parser.add_argument('--seed', type=int, default=1234)
+    parser.add_argument('--seed', type=int, default=0)
 
     # env
     parser.add_argument(
@@ -27,29 +29,29 @@ def parse_args() -> argparse.Namespace:
         choices=['interest_evolution', 'interest_exploration']
     )
 
-    parser.add_argument('--num_users', type=int, default=1000)
-    parser.add_argument('--num_candidates', type=int, default=1700)
+    parser.add_argument('--num_users', type=int, default=1)
+    parser.add_argument('--num_candidates', type=int, default=100)
     parser.add_argument('--slate_size', type=int, default=3)
 
     # user state (model)
-    parser.add_argument('--state_window_size', type=int, default=20)
+    parser.add_argument('--state_window_size', type=int, default=28)
     parser.add_argument('--state_emb_dim', type=int, default=32)
-    parser.add_argument('--agg_method', type=str, default='mean', choices=['mean', 'gru'])
+    parser.add_argument('--agg_method', type=str, default='gru', choices=['mean', 'gru'])
 
     # policy length
-    parser.add_argument('--oldp_length', type=int, default=100)
-    parser.add_argument('--expl_length', type=int, default=20)
-    parser.add_argument('--test_length', type=int, default=30)
+    parser.add_argument('--oldp_length', type=int, default=7*15)
+    parser.add_argument('--expl_length', type=int, default=7*4)
+    parser.add_argument('--test_length', type=int, default=7*4)
 
     # old policy
     parser.add_argument(
         '--old_policy',
         type=str,
-        default='random',
-        choices=['random', 'user_toppop', 'toppop']
+        default='user_toppop',
+        choices=['random', 'toppop', 'user_toppop']
     )
-    parser.add_argument('--toppop_stochasticity', type=float, default=0.1)
-    parser.add_argument('--toppop_windowsize', type=int, default=20)
+    parser.add_argument('--toppop_stochasticity', type=float, default=0.05)
+    parser.add_argument('--toppop_windowsize', type=int, default=28)
 
     # new policy
     parser.add_argument(
@@ -58,10 +60,13 @@ def parse_args() -> argparse.Namespace:
         default='dqn',
         choices=['dqn', 'cdqn', 'random', 'user_toppop', 'toppop']
     )
-    parser.add_argument('--exploration_rate', type=float, default=0.1)
+    parser.add_argument('--exploration_rate', type=float, default=0.05)
 
     args = parser.parse_args()
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    if args.seed is None:
+        args.seed = random.randint(0, 10000)
+        logging.info(f'Set seed as {args.seed}.')
     return args
 
 
@@ -92,7 +97,7 @@ def main():
     # 1. Run an old policy (oldp)
     oldp_agent = build_oldp_agent(args)
     for i_step in range(args.oldp_length):
-        slates, responses = step(i_step, env, user_history, state, oldp_agent, memory, evaluators['oldp'], args)
+        slates, responses, state = step(i_step, env, user_history, state, oldp_agent, memory, evaluators['oldp'], args)
         oldp_agent.update_policy(slates, responses, memory)
 
         if oldp_agent.p is None and i_step >= oldp_agent.window_size:
@@ -105,20 +110,25 @@ def main():
     if 'dqn' in args.new_policy:
         newp_agent = build_newp_agent(args)
         logging.info(f'Pre-train a {args.new_policy.upper()} agent.')
-        newp_agent.update_policy(None, None, memory, train_epoch=10_000, log_interval=1000)
+        newp_agent.update_policy(None, None, memory, train_steps=10_000, log_interval=1000)
     else:
         newp_agent = oldp_agent
 
     # 4. Run exploration
     for i_step in range(args.expl_length):
-        slates, responses = step(i_step, env, user_history, state, newp_agent, memory, evaluators['newp'], args)
-        newp_agent.update_policy(slates, responses, memory, train_epoch=1_000, log_interval=1000)
+        slates, responses, state = step(i_step, env, user_history, state, newp_agent, memory, evaluators['newp'], args)
+        newp_agent.update_policy(slates, responses, memory, train_steps=1_000, log_interval=1000)
 
     # 5. Evaluate
     newp_agent.undo_exploration()
     for i_step in range(args.test_length):
-        step(i_step, env, user_history, state, newp_agent, memory, evaluators['test'], args)
+        _, _, state = step(i_step, env, user_history, state, newp_agent, memory, evaluators['test'], args)
         # newp_agent.update_policy(memory, train_epoch=1_000, log_interval=1000)
+
+    os.makedirs('./results', exist_ok=True)
+    with open(f'./results/{args.new_policy}_seed{args.seed}', 'wb') as f:
+        pkl.dump({'args': vars(args), **evaluators}, f)
+    logging.info('Results are saved.')
 
 
 def step(i_step, env, user_history, state, agent, memory, evaluator, args):
@@ -133,7 +143,7 @@ def step(i_step, env, user_history, state, agent, memory, evaluator, args):
 
     # Restore data
     evaluator.add(slates, responses)
-    if i_step % 10 == 0:
+    if i_step % 7 == 0:
         logging.info(f'[{i_step:02d}/{args.oldp_length}] Cum Hit Ratio: {evaluator.hit_ratio():.4f}')
 
     for i_slate in range(args.slate_size):
@@ -143,7 +153,7 @@ def step(i_step, env, user_history, state, agent, memory, evaluator, args):
             memory.push(state[i_user], [slates[i_user, i_slate]], next_state[i_user], responses[i_user, i_slate])
         state = next_state
 
-    return slates, responses
+    return slates, responses, state
 
 
 if __name__ == '__main__':

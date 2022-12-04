@@ -17,13 +17,13 @@ class CDQNAgent(DQNAgent):
             slates: np.ndarray,
             responses: np.ndarray,
             memory: ReplayMemory,
-            train_epoch: int = 1000,
+            train_steps: int = 1000,
             log_interval: int = 100,
     ):
         self.policy_net.train()
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
-        for i_epoch in range(1, train_epoch+1):
+        for i_step in range(1, train_steps + 1):
             transitions = memory.sample(BATCH_SIZE)
             # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
             # detailed explanation). This converts batch-array of Transitions
@@ -68,7 +68,7 @@ class CDQNAgent(DQNAgent):
             dataset_expec = torch.mean(state_action_values)
             negative_sampling = torch.mean(torch.logsumexp(q_values, 1))
             min_q_loss = (negative_sampling - dataset_expec)
-            loss += min_q_loss
+            loss += 0.1 * min_q_loss
 
             # Optimize the model
             self.optimizer.zero_grad()
@@ -77,8 +77,9 @@ class CDQNAgent(DQNAgent):
                 param.grad.data.clamp_(-1, 1)
             self.optimizer.step()
 
-            if i_epoch % log_interval == 0:
-                logging.info(f'[{i_epoch:03d}/{train_epoch}] Training Loss: {loss}')
+            if i_step % log_interval == 0:
+                logging.info(f'[{i_step:03d}/{train_steps}] Training Loss: {loss}')
 
-            if i_epoch % TARGET_UPDATE == 0:
+            if i_step % TARGET_UPDATE == 0:
                 self.target_net.load_state_dict(self.policy_net.state_dict())
+                self.target_net.eval()

@@ -29,7 +29,7 @@ class DQNAgent(nn.Module):
         self.p = [exploration_rate, 1 - exploration_rate]
         self.policy_net = DQN(num_candidates, emb_dim, aggregate).to(device)
         self.target_net = DQN(num_candidates, emb_dim, aggregate).to(device)
-        self.optimizer = optim.RMSprop(self.policy_net.parameters(), lr=1e-3)
+        self.optimizer = optim.RMSprop(self.policy_net.parameters())
         self.device = device
 
     def undo_exploration(self):
@@ -43,13 +43,13 @@ class DQNAgent(nn.Module):
             slates: np.ndarray or None,
             responses: np.ndarray or None,
             memory: ReplayMemory,
-            train_epoch: int = 1000,
+            train_steps: int = 1000,
             log_interval: int = 100,
     ):
         self.policy_net.train()
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
-        for i_epoch in range(1, train_epoch+1):
+        for i_step in range(1, train_steps + 1):
             transitions = memory.sample(BATCH_SIZE)
             # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
             # detailed explanation). This converts batch-array of Transitions
@@ -58,11 +58,11 @@ class DQNAgent(nn.Module):
 
             # Compute a mask of non-final states and concatenate the batch elements
             # (a final state would've been the one after which simulation ended)
-            non_final_mask = torch.tensor(
-                tuple(map(lambda s: s is not None, batch.next_state)),
-                device=self.device,
-                dtype=torch.bool
-            ).to(self.device)
+            # non_final_mask = torch.tensor(
+            #     tuple(map(lambda s: s is not None, batch.next_state)),
+            #     device=self.device,
+            #     dtype=torch.bool
+            # ).to(self.device)
             non_final_next_states = torch.cat(
                 [s for s in batch.next_state if s is not None]
             ).to(self.device)
@@ -80,8 +80,8 @@ class DQNAgent(nn.Module):
             # on the "older" target_net; selecting their best reward with max(1)[0].
             # This is merged based on the mask, such that we'll have either the expected
             # state value or 0 in case the state was final.
-            next_state_values = torch.zeros(BATCH_SIZE, device=self.device)
-            next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
+            # next_state_values = torch.zeros(BATCH_SIZE, device=self.device)
+            next_state_values = self.target_net(non_final_next_states).max(1)[0].detach()
             # Compute the expected Q values
             expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
@@ -96,19 +96,19 @@ class DQNAgent(nn.Module):
                 param.grad.data.clamp_(-1, 1)
             self.optimizer.step()
 
-            if i_epoch % log_interval == 0:
-                logging.info(f'[{i_epoch:03d}/{train_epoch}] Training Loss: {loss}')
+            if i_step % log_interval == 0:
+                logging.info(f'[{i_step:03d}/{train_steps}] Training Loss: {loss}')
 
-            if i_epoch % TARGET_UPDATE == 0:
+            if i_step % TARGET_UPDATE == 0:
                 self.target_net.load_state_dict(self.policy_net.state_dict())
+                self.target_net.eval()
 
     def select_action(self, state_arr: np.ndarray) -> torch.Tensor:
         self.policy_net.eval()
-        bs = len(state_arr)
         state = torch.tensor(state_arr, dtype=torch.long, device=self.device)
         with torch.no_grad():
             q = self.policy_net(state)
-            q_recs = torch.argsort(q)
+            q_recs = torch.argsort(q, descending=True)
 
         q_recs = q_recs.detach().cpu().numpy()[:, :self.slate_size]
         if self.p:
@@ -131,9 +131,9 @@ class DQN(nn.Module):
         # self.bn = nn.BatchNorm1d(emb_dim)
 
         # # Simple linear
-        head_layer = nn.Linear(emb_dim, num_candidates)
-        nn.init.constant_(head_layer.weight, 0.0)
-        nn.init.uniform_(head_layer.bias, 0.0, 0.0)
+        head_layer = nn.Linear(emb_dim, num_candidates)  # inner_product(X_user, X_item)
+        # nn.init.constant_(head_layer.weight, 0.0)  # item emb
+        # nn.init.uniform_(head_layer.bias, 0.0, 0.0)  # item popularity bias
         self.head = head_layer
 
         # 2-MLP
