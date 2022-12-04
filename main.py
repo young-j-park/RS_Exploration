@@ -29,8 +29,8 @@ def parse_args() -> argparse.Namespace:
         choices=['interest_evolution', 'interest_exploration']
     )
 
-    parser.add_argument('--num_users', type=int, default=1)
-    parser.add_argument('--num_candidates', type=int, default=100)
+    parser.add_argument('--num_users', type=int, default=1000)
+    parser.add_argument('--num_candidates', type=int, default=1700)
     parser.add_argument('--slate_size', type=int, default=3)
 
     # user state (model)
