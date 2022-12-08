@@ -193,9 +193,11 @@ class IEClusterUserSampler(user.AbstractUserSampler):
     """
 
     def __init__(self,
-                 user_type_distribution=(0.3, 0.7),
-                 user_document_mean_affinity_matrix=((.1, .7), (.7, .1)),
-                 user_document_stddev_affinity_matrix=((.1, .1), (.1, .1)),
+                 user_type_distribution=(0.2,) + (0.04,)*20,
+                 user_document_mean_affinity_matrix=((.8,)*20,) + tuple(np.eye(20)),
+                 user_document_stddev_affinity_matrix=(
+                         ((.05,)*20,) + tuple(np.eye(20)*0.05)
+                 ),
                  user_ctor=IEUserState,
                  **kwargs):
         self._number_of_user_types = len(user_type_distribution)
@@ -319,9 +321,9 @@ class IETopicDocumentSampler(document.AbstractDocumentSampler):
     """
 
     def __init__(self,
-                 topic_distribution=(.2, .8),
-                 topic_quality_mean=(.8, .2),
-                 topic_quality_stddev=(.1, .1),
+                 topic_distribution=(.05,) * 20,
+                 topic_quality_mean=(.2,)*5 + (.4,)*5 + (.6,)*5 + (.8,)*5,
+                 topic_quality_stddev=(.05,) * 20,
                  doc_ctor=IEDocument,
                  **kwargs):
         self._number_of_topics = len(topic_distribution)
@@ -409,8 +411,8 @@ def create_multiuser_environment(env_config) -> environment.MultiUserEnvironment
             env_config['slate_size'],
             user_state_ctor=IEUserState,
             response_model_ctor=IEResponse,
-            seed=env_config['seed'])
-        for _ in range(num_users)
+            seed=env_config['seed']*num_users+i)
+        for i in range(num_users)
     ]
     if num_users == 1:
         logging.warning('num_users is 1.')

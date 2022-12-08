@@ -40,6 +40,7 @@ class MyEnv:
 
 
 def make_env(
+        seed: int,
         env_type: str,
         num_users: int,
         num_candidates: int,
@@ -47,7 +48,7 @@ def make_env(
         **kwargs
 ):
     env_config = {
-        'seed': 1234,
+        'seed': seed,
         'resample_documents': False,
         'num_users': num_users,
         'slate_size': slate_size,

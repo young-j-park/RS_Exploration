@@ -1,5 +1,5 @@
 
 env_type: interest_exploration
-num_users: 1
+num_users: 5
 num_candidates: 20
-slate_size: 3
+slate_size: 1

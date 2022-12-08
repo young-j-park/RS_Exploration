@@ -32,10 +32,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--agg_method', type=str, default='gru', choices=['mean', 'gru'])
 
     # policy length
-    parser.add_argument('--warmup_length', type=int, default=7*4)
-    parser.add_argument('--oldp_length', type=int, default=7*8)
-    parser.add_argument('--expl_length', type=int, default=7*4)
-    parser.add_argument('--test_length', type=int, default=7*4)
+    # parser.add_argument('--warmup_length', type=int, default=7*4)
+    parser.add_argument('--oldp_length', type=int, default=7*8*3)
+    parser.add_argument('--expl_length', type=int, default=7*8*3)
+    parser.add_argument('--test_length', type=int, default=7*8*3)
 
     # common
     parser.add_argument('--exploration_rate', type=float, default=0.05)
@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
         '--old_policy',
         type=str,
         default='user_toppop',
-        choices=['random', 'toppop', 'user_toppop']
+        choices=['random', 'toppop', 'user_toppop', 'mab']
     )
     parser.add_argument('--toppop_stochastic', type=bool, default=True)
     parser.add_argument('--toppop_windowsize', type=int, default=28)
@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
         '--new_policy',
         type=str,
         default='dqn',
-        choices=['dqn', 'cdqn', 'random', 'user_toppop', 'toppop']
+        choices=['dqn', 'cdqn', 'random', 'user_toppop', 'toppop', 'mab']
     )
 
     args = parser.parse_args()
@@ -90,16 +90,16 @@ def main():
     user_history = UserHistory(args.num_users, args.state_window_size)
     state = user_history.get_state()
     evaluators = {
-        'warmup': Evaluator(),
+        # 'warmup': Evaluator(),
         'oldp': Evaluator(),
         'newp': Evaluator(),
         'test': Evaluator(),
     }
 
-    # 1. Warm-Up
-    random_agent = build_agent(args, 'random')
-    for i_step in range(args.warmup_length):
-        slates, responses, state = step(i_step, env, user_history, state, random_agent, memory, evaluators['warmup'], args)
+    # # 1. Warm-Up
+    # random_agent = build_agent(args, 'random')
+    # for i_step in range(args.warmup_length):
+    #     slates, responses, state = step(i_step, env, user_history, state, random_agent, memory, evaluators['warmup'], args)
 
     # 2. Run an old policy (oldp)
     oldp_agent = build_agent(args, args.old_policy)
@@ -155,7 +155,7 @@ def step(i_step, env, user_history, state, agent, memory, evaluator, args):
     # Restore data
     evaluator.add(slates, responses)
     if i_step % 7 == 0:
-        logging.info(f'[{i_step:02d}/{args.oldp_length}] Cum Hit Ratio: {evaluator.hit_ratio():.4f}')
+        logging.info(f'[Step {i_step:02d}] Cum Hit Ratio: {evaluator.hit_ratio():.4f}')
 
     for i_slate in range(args.slate_size):
         user_history.push(slates[:, i_slate], responses[:, i_slate])
