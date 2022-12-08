@@ -103,7 +103,7 @@ class DQNAgent(nn.Module):
                 self.target_net.load_state_dict(self.policy_net.state_dict())
                 self.target_net.eval()
 
-    def select_action(self, state_arr: np.ndarray) -> torch.Tensor:
+    def select_action(self, state_arr: np.ndarray) -> np.ndarray:
         self.policy_net.eval()
         state = torch.tensor(state_arr, dtype=torch.long, device=self.device)
         with torch.no_grad():
@@ -132,7 +132,7 @@ class DQN(nn.Module):
         # self.bn = nn.BatchNorm1d(emb_dim)
 
         # # Simple linear
-        head_layer = nn.Linear(2*emb_dim, num_candidates)  # inner_product(X_user, X_item)
+        head_layer = nn.Linear(emb_dim, num_candidates)  # inner_product(X_user, X_item)
         # nn.init.constant_(head_layer.weight, 0.0)  # item emb
         # nn.init.uniform_(head_layer.bias, 0.0, 0.0)  # item popularity bias
         self.head = head_layer

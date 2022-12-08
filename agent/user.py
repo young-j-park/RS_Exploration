@@ -29,17 +29,17 @@ class UserModel(nn.Module):
                 dropout=0.1,
                 bidirectional=False
             )
-            self.gru_layer_neg = nn.GRU(
-                input_size=emb_dim,
-                hidden_size=emb_dim,
-                num_layers=2,
-                batch_first=True,
-                dropout=0.1,
-                bidirectional=False
-            )
+#             self.gru_layer_neg = nn.GRU(
+#                 input_size=emb_dim,
+#                 hidden_size=emb_dim,
+#                 num_layers=2,
+#                 batch_first=True,
+#                 dropout=0.1,
+#                 bidirectional=False
+#             )
             self.aggregate_fn = {
                 'pos': lambda x: self.gru_layer_pos(x)[0][:, -1],
-                'neg': lambda x: self.gru_layer_neg(x)[0][:, -1]
+#                 'neg': lambda x: self.gru_layer_neg(x)[0][:, -1]
             }
 
     def forward(self, state):
@@ -53,8 +53,9 @@ class UserModel(nn.Module):
         """
         state += 1
         emb_p = self.item_emb(state[:, 0, :])
-        emb_n = self.item_emb(state[:, 1, :])
-        emb = torch.cat(
-            [self.aggregate_fn['pos'](emb_p), self.aggregate_fn['neg'](emb_n)], dim=1
-        )
-        return emb
+        return self.aggregate_fn['pos'](emb_p)
+#         emb_n = self.item_emb(state[:, 1, :])
+#         emb = torch.cat(
+#             [self.aggregate_fn['pos'](emb_p), self.aggregate_fn['neg'](emb_n)], dim=1
+#         )
+#         return emb
