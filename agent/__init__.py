@@ -3,6 +3,7 @@ import logging
 
 from .random import RandomAgent
 from .toppop import TopPopAgent
+from .mab import MABAgent
 from .dqn import DQNAgent
 from .cdqn import CDQNAgent
 
@@ -12,6 +13,10 @@ def build_agent(args, policy_name: str):
 
     if policy_name == 'random':
         agent = RandomAgent(
+            args.num_users, args.num_candidates, args.slate_size
+        )
+    elif policy_name == 'mab':
+        agent = MABAgent(
             args.num_users, args.num_candidates, args.slate_size
         )
     elif policy_name == 'toppop':
