@@ -41,11 +41,7 @@ class TopPopAgent:
                 cur_count[i_user, slates[i_user, i_slate]] += responses[i_user, i_slate]
         self.counts = np.concatenate((self.counts[1:], [cur_count]), 0)
 
-    def select_action(
-            self,
-            available_item_ids: List[int],
-    ) -> np.ndarray:
-
+    def select_action(self, state_arr: np.ndarray) -> np.ndarray:
         cum_counts = np.sum(self.counts, axis=0)
         if not self.local:
             cum_counts = np.sum(cum_counts, axis=0, keepdims=True)
@@ -76,6 +72,7 @@ class TopPopAgent:
 
     def undo_exploration(self):
         self.p = None
+        self.stochastic = False
 
     def do_exploration(self):
         self.p = [self.exploration_rate, 1 - self.exploration_rate]
