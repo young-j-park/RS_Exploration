@@ -15,8 +15,9 @@ class ReplayMemory(object):
 
     def __init__(self, capacity=None):
         self.memory = deque([], maxlen=capacity)
+        self.weights = deque([], maxlen=capacity)
 
-    def push(self, *args):
+    def push(self, i_step, *args):
         """Save a transition"""
         s, a, ns, r = args
         s = torch.as_tensor(s, dtype=torch.long).unsqueeze(0)
@@ -24,10 +25,21 @@ class ReplayMemory(object):
         ns = torch.as_tensor(ns, dtype=torch.long).unsqueeze(0)
         r = torch.as_tensor(r, dtype=torch.float).unsqueeze(0)
         self.memory.append(Transition(s, a, ns, r))
+        self.weights.append(i_step+1)
+
+    # def sample(self, batch_size):
+    #     _batch_size = min(batch_size, len(self.memory))
+    #     return random.sample(self.memory, _batch_size)
 
     def sample(self, batch_size):
-        _batch_size = min(batch_size, len(self.memory))
-        return random.sample(self.memory, _batch_size)
+        max_step = max(self.weights)
+        population = self.memory
+        weights = np.exp(2*(np.array(self.weights) + np.random.randn()*1e-5 - max_step) / max_step)
+        k = min(batch_size, len(self.memory))
+
+        v = [random.random() ** (1 / w) for w in weights]
+        order = sorted(range(len(population)), key=lambda i: v[i])
+        return [population[i] for i in order[-k:]]
 
     def __len__(self):
         return len(self.memory)
