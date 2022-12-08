@@ -68,7 +68,7 @@ class CDQNAgent(DQNAgent):
             dataset_expec = torch.mean(state_action_values)
             negative_sampling = torch.mean(torch.logsumexp(q_values, 1))
             min_q_loss = (negative_sampling - dataset_expec)
-            loss += 0.1 * min_q_loss
+            loss += min_q_loss
 
             # Optimize the model
             self.optimizer.zero_grad()
