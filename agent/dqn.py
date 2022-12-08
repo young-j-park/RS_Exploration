@@ -20,6 +20,8 @@ class DQNAgent(nn.Module):
             emb_dim: int,
             aggregate: str,
             exploration_rate: float,
+            batch_exploration: bool,
+            conservative: bool,
             device: "torch.device",
     ):
         super(DQNAgent, self).__init__()
@@ -29,6 +31,7 @@ class DQNAgent(nn.Module):
         self.p = [exploration_rate, 1 - exploration_rate]
         self.policy_net = DQN(num_candidates, emb_dim, aggregate).to(device)
         self.target_net = DQN(num_candidates, emb_dim, aggregate).to(device)
+        self.conservative = conservative
         self.optimizer = optim.RMSprop(self.policy_net.parameters(), lr=1e-3)
         self.device = device
 
@@ -73,7 +76,8 @@ class DQNAgent(nn.Module):
             # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
             # columns of actions taken. These are the actions which would've been taken
             # for each batch state according to policy_net
-            state_action_values = self.policy_net(state_batch).gather(1, action_batch)
+            q_values = self.policy_net(state_batch)
+            state_action_values = q_values.gather(1, action_batch)
 
             # Compute V(s_{t+1}) for all next states.
             # Expected values of actions for non_final_next_states are computed based
@@ -88,6 +92,13 @@ class DQNAgent(nn.Module):
             # Compute Huber loss
             criterion = nn.SmoothL1Loss()
             loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+
+            # Add CQN loss
+            if self.conservative:
+                dataset_expec = torch.mean(state_action_values)
+                negative_sampling = torch.mean(torch.logsumexp(q_values, 1))
+                min_q_loss = (negative_sampling - dataset_expec)
+                loss += min_q_loss
 
             # Optimize the model
             self.optimizer.zero_grad()
