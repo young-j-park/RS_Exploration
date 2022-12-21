@@ -5,6 +5,7 @@ from .random import RandomAgent
 from .toppop import TopPopAgent
 from .mab import MABAgent
 from .dqn import DQNAgent
+from .dqn_v1 import DQNAgentV1
 
 
 def build_agent(args, policy_name: str):
@@ -14,9 +15,10 @@ def build_agent(args, policy_name: str):
         agent = RandomAgent(
             args.num_users, args.num_candidates, args.slate_size
         )
-    elif policy_name == 'mab':
+    elif 'mab' in policy_name:
+        rho = int(policy_name[-2:]) / 10.0
         agent = MABAgent(
-            args.num_users, args.num_candidates, args.slate_size
+            args.num_users, args.num_candidates, args.slate_size, rho
         )
     elif policy_name == 'toppop':
         agent = TopPopAgent(
@@ -29,10 +31,17 @@ def build_agent(args, policy_name: str):
             args.toppop_stochastic, args.exploration_rate, local=True
         )
     elif args.new_policy in {'dqn', 'cdqn'}:
-        conservative = args.new_policy == 'cdqn'
+        conservative = 'cdqn' in args.new_policy
         agent = DQNAgent(
-            args.num_candidates, args.slate_size, args.state_emb_dim,
+            args.num_users, args.num_candidates, args.slate_size, args.state_emb_dim,
             args.agg_method, args.exploration_rate, args. batch_exploration,
+            conservative, args.device
+        )
+    elif args.new_policy in {'dqn_v1', 'cdqn_v1'}:
+        conservative = 'cdqn' in args.new_policy
+        agent = DQNAgentV1(
+            args.num_users, args.num_candidates, args.slate_size, args.state_emb_dim,
+            args.agg_method, args.exploration_rate, args.batch_exploration,
             conservative, args.device
         )
     else:

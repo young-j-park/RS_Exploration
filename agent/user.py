@@ -20,6 +20,7 @@ class UserModel(nn.Module):
                 'pos': lambda x: torch.mean(x, dim=1),
                 'neg': lambda x: torch.mean(x, dim=1)
             }
+            out_dim = emb_dim
         elif aggregate == 'gru':
             self.gru_layer_pos = nn.GRU(
                 input_size=emb_dim,
@@ -39,8 +40,15 @@ class UserModel(nn.Module):
 #             )
             self.aggregate_fn = {
                 'pos': lambda x: self.gru_layer_pos(x)[0][:, -1],
-#                 'neg': lambda x: self.gru_layer_neg(x)[0][:, -1]
+                # 'neg': lambda x: self.gru_layer_neg(x)[0][:, -1]
             }
+            # out_dim = len(self.aggregate_fn) * emb_dim
+        else:
+            raise NotImplementedError
+        # self.user_head_layer = nn.Sequential(
+        #     nn.ReLU(),
+        #     nn.Linear(out_dim, emb_dim)
+        # )
 
     def forward(self, state):
         """
@@ -48,14 +56,14 @@ class UserModel(nn.Module):
             state: (N, 2, W)
 
         Returns:
-            emb: (N, 2*D)
+            emb: (N, D)
 
         """
-        state += 1
-        emb_p = self.item_emb(state[:, 0, :])
-        return self.aggregate_fn['pos'](emb_p)
-#         emb_n = self.item_emb(state[:, 1, :])
+        emb_p = self.item_emb(state[:, 0, :] + 1)
+        emb = self.aggregate_fn['pos'](emb_p)
+        return emb
+#         emb_n = self.item_emb(state[:, 1, :] + 1)
 #         emb = torch.cat(
 #             [self.aggregate_fn['pos'](emb_p), self.aggregate_fn['neg'](emb_n)], dim=1
 #         )
-#         return emb
+#         return self.user_head_layer(emb)

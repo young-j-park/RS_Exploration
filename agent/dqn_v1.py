@@ -13,7 +13,7 @@ from agent.user import UserModel
 from config.config import BATCH_SIZE, GAMMA, TARGET_UPDATE
 
 
-class DQNAgent(nn.Module):
+class DQNAgentV1(nn.Module):
 
     def __init__(
             self,
@@ -27,7 +27,7 @@ class DQNAgent(nn.Module):
             conservative: bool,
             device: "torch.device",
     ):
-        super(DQNAgent, self).__init__()
+        super(DQNAgentV1, self).__init__()
         self.num_users = num_users
         self.num_candidates = num_candidates
         self.slate_size = slate_size
@@ -112,8 +112,8 @@ class DQNAgent(nn.Module):
             # Optimize the model
             self.optimizer.zero_grad()
             loss.backward()
-            for param in self.policy_net.parameters():
-                param.grad.data.clamp_(-1, 1)
+            # for param in self.policy_net.parameters():
+            #     param.grad.data.clamp_(-1, 1)
             self.optimizer.step()
 
             if i_step % log_interval == 0:
@@ -145,7 +145,7 @@ class DQNAgent(nn.Module):
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
         with torch.no_grad():
-            state_emb = self.target_net.state_model(state_batch)
+            state_emb, num_users = self.target_net.emb_sa(state_batch)
             next_state_values = self.target_net.head(state_emb)
         expected_state_action_values = (next_state_values * GAMMA) + 1.0
 
@@ -173,8 +173,8 @@ class DQNAgent(nn.Module):
             if len(grad1.shape) == 2:
                 grad1 = grad1.unsqueeze(2)
             gradient_emb.append(grad1)
-        gradient_emb = torch.cat(gradient_emb, -1).detach().cpu().numpy()
-        gradient_emb = gradient_emb.reshape((self.num_users*self.num_candidates, -1))
+        gradient_emb = torch.cat(gradient_emb, -1).squeeze(1).detach().cpu().numpy()
+        # gradient_emb = gradient_emb.reshape((self.num_users*self.num_candidates, -1))
 
         # Sort
         q_rec_indices = [
@@ -210,11 +210,11 @@ class DQN(nn.Module):
         self.state_model = UserModel(num_candidates, emb_dim, aggregate)
         # self.bn = nn.BatchNorm1d(emb_dim)
 
-        # self.item_emb = nn.Parameter(torch.empty(num_candidates, emb_dim), requires_grad=True)
-        # nn.init.normal_(self.item_emb)
+        self.item_emb = nn.Parameter(torch.empty(num_candidates, emb_dim), requires_grad=True)
+        nn.init.normal_(self.item_emb)
 
         # # Simple linear
-        self.head = nn.Linear(emb_dim, num_candidates)
+        # self.head = nn.Linear(emb_dim*2, 1)
 
         # 2-MLP
         # self.head = nn.Sequential(
@@ -224,15 +224,13 @@ class DQN(nn.Module):
         # )
 
         # # 3-MLP
-        # self.head = nn.Sequential(
-        #     nn.Linear(emb_dim*2, emb_dim),
-        #     nn.ReLU(),
-        #     nn.Linear(emb_dim, emb_dim//2),
-        #     nn.ReLU(),
-        #     nn.Linear(emb_dim//2, 1)
-        # )
-
-        self.softplus = nn.Softplus()
+        self.head = nn.Sequential(
+            nn.Linear(emb_dim*2, emb_dim),
+            nn.ReLU(),
+            nn.Linear(emb_dim, emb_dim//2),
+            nn.ReLU(),
+            nn.Linear(emb_dim//2, 1)
+        )
 
     def forward(self, state):
         """
@@ -243,6 +241,14 @@ class DQN(nn.Module):
             q-values: (N, A)
 
         """
-        emb = self.state_model(state)  # self.bn()
-        q_vals = self.head(emb)
-        return self.softplus(q_vals)
+        embs, num_users = self.emb_sa(state)
+        q_vals = self.head(embs).view(num_users, self.num_candidates)
+        return q_vals
+
+    def emb_sa(self, state):
+        num_users = len(state)
+        user_emb = self.state_model(state).unsqueeze(1).expand(-1, self.num_candidates, -1)
+        item_emb = self.item_emb.unsqueeze(0).expand(num_users, -1, -1)
+        embs = torch.cat([user_emb, item_emb], -1).view(-1, self.emb_dim * 2)
+        return embs, num_users
+

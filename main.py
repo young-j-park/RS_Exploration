@@ -21,7 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     # seed
-    parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--seed', type=int, default=None)
 
     # env
     parser.add_argument('--env_config', type=str, default='ie_debug')
@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     # policy length
     # parser.add_argument('--warmup_length', type=int, default=7*4)
     parser.add_argument('--oldp_length', type=int, default=7*8*3)
-    parser.add_argument('--expl_length', type=int, default=7*8*3)
+    parser.add_argument('--expl_length', type=int, default=7*8*3*100)
     parser.add_argument('--test_length', type=int, default=7*8*3)
 
     # common
@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
         '--old_policy',
         type=str,
         default='user_toppop',
-        choices=['random', 'toppop', 'user_toppop', 'mab']
+        choices=['random', 'toppop', 'user_toppop', 'mab00', 'mab01', 'mab10']
     )
     parser.add_argument('--toppop_stochastic', type=bool, default=True)
     parser.add_argument('--toppop_windowsize', type=int, default=28)
@@ -55,9 +55,9 @@ def parse_args() -> argparse.Namespace:
         '--new_policy',
         type=str,
         default='dqn',
-        choices=['dqn', 'cdqn', 'random', 'user_toppop', 'toppop', 'mab']
+        choices=['dqn', 'cdqn', 'random', 'user_toppop', 'toppop', 'mab', 'mab00', 'mab01', 'mab10']
     )
-    parser.add_argument('--batch_exploration', type=bool, default=False)
+    parser.add_argument('--batch_exploration', action='store_true')
 
     args = parser.parse_args()
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -92,9 +92,9 @@ def main():
     state = user_history.get_state()
     evaluators = {
         # 'warmup': Evaluator(),
-        'oldp': Evaluator(),
-        'newp': Evaluator(),
-        'test': Evaluator(),
+        'oldp': Evaluator(env),
+        'newp': Evaluator(env),
+        'test': Evaluator(env),
     }
 
     # # 1. Warm-Up
@@ -109,7 +109,7 @@ def main():
         oldp_agent.update_policy(slates, responses, memory)
 
     # 3. Build & pre-train a new policy (newp)
-    pretrain_steps = len(memory)*100 // BATCH_SIZE
+    pretrain_steps = min(len(memory)*100 // BATCH_SIZE, 2000)
     if 'dqn' in args.new_policy:
         newp_agent = build_agent(args, args.new_policy)
         logging.info(f'Pre-train a {args.new_policy.upper()} agent.')
@@ -120,15 +120,19 @@ def main():
         raise NotImplementedError
 
     # 4. Run exploration
+    logging.info(f'New policy {args.new_policy} starts exploring.')
     finetune_steps = pretrain_steps // 10
-    for i_step in range(args.old_policy, args.old_policy+args.expl_length):
+    step_begin = args.oldp_length
+    for i_step in range(step_begin, step_begin+args.expl_length):
         slates, responses, state = step(i_step, env, user_history, state, newp_agent, memory, evaluators['newp'], args)
         if i_step % 3 == 0:
             newp_agent.update_policy(slates, responses, memory, train_steps=finetune_steps, log_interval=finetune_steps)
 
     # 5. Evaluate
+    logging.info(f'New policy {args.new_policy} is evaluated.')
     newp_agent.undo_exploration()
-    for i_step in range(args.old_policy+args.expl_length, args.old_policy+args.expl_length+args.test_length):
+    step_begin = args.oldp_length+args.expl_length
+    for i_step in range(step_begin, step_begin+args.test_length):
         slates, responses, state = step(i_step, env, user_history, state, newp_agent, memory, evaluators['test'], args)
         if i_step % 3 == 0:
             newp_agent.update_policy(slates, responses, memory, train_steps=len(memory)*10//BATCH_SIZE, log_interval=finetune_steps)
@@ -137,7 +141,10 @@ def main():
         pth = None
         while pth is None or os.path.isfile(pth):
             experiment_id = uuid.uuid4()
-            pth = f'{SAVE_DIR}/{args.env_config}_{args.new_policy}_seed{args.seed}_{experiment_id}.pkl'
+            policy_name = args.new_policy
+            if args.batch_exploration:
+                policy_name += '_batch'
+            pth = f'{SAVE_DIR}/{args.env_config}_{policy_name}_seed{args.seed}_{experiment_id}.pkl'
         return pth
 
     os.makedirs(SAVE_DIR, exist_ok=True)
@@ -161,6 +168,7 @@ def step(i_step, env, user_history, state, agent, memory, evaluator, args):
     evaluator.add(slates, responses)
     if i_step % 7 == 0:
         logging.info(f'[Step {i_step:02d}] Cum Hit Ratio: {evaluator.hit_ratio():.4f}')
+        logging.info(f'[Step {i_step:02d}] Cum MRR: {np.mean(evaluator.ranking()):.4f}')
 
     for i_slate in range(args.slate_size):
         user_history.push(slates[:, i_slate], responses[:, i_slate])
@@ -172,7 +180,6 @@ def step(i_step, env, user_history, state, agent, memory, evaluator, args):
             )
         state = next_state
 
-    logging.debug([slates, responses])
     return slates, responses, state
 
 

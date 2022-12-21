@@ -83,7 +83,7 @@ class IEUserModel(user.AbstractUserModel):
                  response_model_ctor=None,
                  seed=0):
 
-        super(IEUserModel, self).__init__(response_model_ctor, IEClusterUserSampler(
+        super(IEUserModel, self).__init__(response_model_ctor, MyIEClusterUserSampler(
             user_ctor=user_state_ctor, seed=seed), slate_size)
         self._user_state_ctor = user_state_ctor
         if choice_model_ctor is None:
@@ -96,6 +96,14 @@ class IEUserModel(user.AbstractUserModel):
     def avg_user_state(self):
         """Returns the prior of user state."""
         return self._user_state_ctor(self._user_sampler.avg_affinity_given_topic())
+
+    @property
+    def user_state(self):
+        """Returns the prior of user state."""
+        return self._user_state_ctor(self._user_sampler.avg_affinity_given_topic())
+
+    def get_topic_affinity(self):
+        return self._user_state.topic_affinity
 
     def is_terminal(self):
         """Returns a boolean indicating if the session is over."""
@@ -127,6 +135,12 @@ class IEUserModel(user.AbstractUserModel):
         for i, response in enumerate(responses):
             response.quality = documents[i].quality
             response.cluster_id = documents[i].cluster_id
+            if response:
+                doc_id = documents[i].doc_id()
+                if doc_id in self._user_state.consumed:
+                    self._user_state.consumed[doc_id] += 1
+                else:
+                    self._user_state.consumed[doc_id] = 1
         if selected_index is None:
             return responses
         self._generate_response(documents[selected_index],
@@ -155,10 +169,14 @@ class IEUserState(user.AbstractUserState):
     def __init__(self, topic_affinity):
         """Initializes a new user."""
         self.topic_affinity = topic_affinity
+        self.consumed = {}
 
-    def score_document(self, doc_obs):
+    def score_document(self,  doc_obs):
         """Returns user document affinity plus document quality."""
-        return self.topic_affinity[doc_obs['cluster_id']] + doc_obs['quality']
+        # n_consumed = self.consumed.get(doc_obs['doc_id'], 0)
+        # p = np.exp(-n_consumed)
+        logging.debug((self.topic_affinity.max(), self.topic_affinity[doc_obs['cluster_id']], doc_obs['quality']))
+        return (self.topic_affinity[doc_obs['cluster_id']] + doc_obs['quality'])
 
     def create_observation(self):
         """User's topic_affinity is not observable."""
@@ -167,6 +185,45 @@ class IEUserState(user.AbstractUserState):
     @staticmethod
     def observation_space():
         return spaces.Box(shape=(0,), dtype=np.float32, low=0.0, high=np.inf)
+
+
+class MyIEClusterUserSampler(user.AbstractUserSampler):
+
+    def __init__(self,
+                 number_of_topics=20,
+                 number_of_interests=3,
+                 user_document_mean_affinity=(0.8, 0.1),
+                 user_document_std_affinity=(0.2, 0.1),
+                 user_ctor=IEUserState,
+                 **kwargs):
+        self._number_of_topics = number_of_topics
+        self._number_of_interests = number_of_interests
+        if len(user_document_mean_affinity) != 2:
+            raise ValueError
+        if len(user_document_std_affinity) != 2:
+            raise ValueError
+        self._user_doc_means = user_document_mean_affinity
+        self._user_doc_stddev = user_document_std_affinity
+        super(MyIEClusterUserSampler, self).__init__(user_ctor, **kwargs)
+
+    def sample_user(self):
+        # 1. Pick user interests.
+        user_topics = self._rng.choice(
+            self._number_of_topics, size=self._number_of_interests, replace=False)
+        # 2. Sample user-document affinity given type.
+        user_doc_means = np.ones(self._number_of_topics) * self._user_doc_means[1]
+        user_doc_means[user_topics] = self._user_doc_means[0]
+        user_doc_stds = np.ones(self._number_of_topics) * self._user_doc_stddev[1]
+        user_doc_stds[user_topics] = self._user_doc_stddev[0]
+        user_doc_affinity = (
+            self._rng.lognormal(
+                mean=user_doc_means,
+                sigma=user_doc_stds))
+        return self._user_ctor(user_doc_affinity)
+
+    def avg_affinity_given_topic(self):
+        # Returns the prior of document affinity.
+        return np.matmul(self._user_type_dist, self._user_doc_means)
 
 
 class IEClusterUserSampler(user.AbstractUserSampler):
@@ -193,10 +250,10 @@ class IEClusterUserSampler(user.AbstractUserSampler):
     """
 
     def __init__(self,
-                 user_type_distribution=(0.2,) + (0.04,)*20,
-                 user_document_mean_affinity_matrix=((.8,)*20,) + tuple(np.eye(20)),
+                 user_type_distribution=(0.05,)*20,
+                 user_document_mean_affinity_matrix=tuple(1.0*np.eye(20) + 0.1),
                  user_document_stddev_affinity_matrix=(
-                         ((.05,)*20,) + tuple(np.eye(20)*0.05)
+                         tuple(-np.eye(20)*0.15 + np.ones((20, 20))*0.2)
                  ),
                  user_ctor=IEUserState,
                  **kwargs):
@@ -290,7 +347,7 @@ class IEDocument(document.AbstractDocument):
         super(IEDocument, self).__init__(doc_id)
 
     def create_observation(self):
-        return {'quality': np.array(self.quality), 'cluster_id': self.cluster_id}
+        return {'quality': np.array(self.quality), 'cluster_id': self.cluster_id, 'doc_id': self.doc_id()}
 
     @classmethod
     def observation_space(cls):
@@ -322,18 +379,20 @@ class IETopicDocumentSampler(document.AbstractDocumentSampler):
 
     def __init__(self,
                  topic_distribution=(.05,) * 20,
-                 topic_quality_mean=(.2,)*5 + (.4,)*5 + (.6,)*5 + (.8,)*5,
-                 topic_quality_stddev=(.05,) * 20,
+                 topic_quality_p=(.1, .3, .6),
+                 topic_quality_mean=(.8, .3, .1),  # (.2,)*5 + (.4,)*5 + (.6,)*5 + (.8,)*5,
+                 topic_quality_stddev=(.03, .03, .03),
                  doc_ctor=IEDocument,
                  **kwargs):
         self._number_of_topics = len(topic_distribution)
         self._topic_dist = topic_distribution
-        if len(topic_quality_mean) != len(topic_distribution):
-            raise ValueError('The dimensions of topic_quality_mean and '
-                             'topic_distribution do not match.')
-        if len(topic_quality_stddev) != len(topic_distribution):
-            raise ValueError('The dimensions of topic_quality_stddev and '
-                             'topic_distribution do not match.')
+        # if len(topic_quality_mean) != len(topic_distribution):
+        #     raise ValueError('The dimensions of topic_quality_mean and '
+        #                      'topic_distribution do not match.')
+        # if len(topic_quality_stddev) != len(topic_distribution):
+        #     raise ValueError('The dimensions of topic_quality_stddev and '
+        #                      'topic_distribution do not match.')
+        self._topic_quality_p = topic_quality_p
         self._topic_quality_mean = topic_quality_mean
         self._topic_quality_stddev = topic_quality_stddev
         super(IETopicDocumentSampler, self).__init__(doc_ctor, **kwargs)
@@ -349,10 +408,11 @@ class IETopicDocumentSampler(document.AbstractDocumentSampler):
         doc_features['doc_id'] = self._doc_count
         self._doc_count += 1
         topic_id = self._rng.choice(self._number_of_topics, p=self._topic_dist)
+        quality_id = self._rng.choice(len(self._topic_quality_mean), p=self._topic_quality_p)
         doc_quality = (
             self._rng.lognormal(
-                mean=self._topic_quality_mean[topic_id],
-                sigma=self._topic_quality_stddev[topic_id]))
+                mean=self._topic_quality_mean[quality_id],
+                sigma=self._topic_quality_stddev[quality_id]))
         doc_features['cluster_id'] = topic_id
         doc_features['quality'] = doc_quality
         return self._doc_ctor(**doc_features)

@@ -10,7 +10,7 @@ class MABAgent:
             num_users: int,
             num_candidates: int,
             slate_size: int,
-            rho: float = 1.0,
+            rho: float = 0.1,
     ):
         self.num_users = num_users
         self.num_candidates = num_candidates

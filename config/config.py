@@ -8,4 +8,4 @@ GAMMA = 0.9
 TARGET_UPDATE = 200
 
 # Path
-SAVE_DIR = './results'
+SAVE_DIR = './results_long'
